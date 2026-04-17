@@ -1,6 +1,5 @@
 import { motion } from 'motion/react';
-import { Play, Sparkles } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 export default function Hero() {
   const navigate = useNavigate();
@@ -22,37 +21,32 @@ export default function Hero() {
           />
         </video>
 
-        {/* Dark Overlay */}
-        <div className="absolute inset-0 bg-black/30 z-[1]" />
-
+        
         {/* Navbar - Overlaid on Video */}
-        <nav className="absolute top-0 left-0 right-0 flex items-center justify-between px-6 md:px-12 lg:px-20 py-5 font-body z-10">
+        <nav className="absolute top-0 left-0 right-0 flex items-center justify-between px-6 md:px-12 lg:px-20 py-5 font-body z-50">
           <div className="flex items-center gap-2">
-            <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-white text-black">
-              <Sparkles className="w-3.5 h-3.5" />
-            </div>
             <span className="text-xl font-semibold tracking-tight text-black">
               ✦ Nexora
             </span>
           </div>
           <div className="flex items-center gap-8">
-            <a href="#features" className="text-sm text-black/70 hover:text-black transition-colors">
+            <Link to="/features" className="text-sm text-black/70 hover:text-black transition-colors">
               Features
-            </a>
-            <a href="#how-it-works" className="text-sm text-black/70 hover:text-black transition-colors">
+            </Link>
+            <Link to="/how-it-works" className="text-sm text-black/70 hover:text-black transition-colors">
               How It Works
-            </a>
-            <a href="#use-cases" className="text-sm text-black/70 hover:text-black transition-colors">
+            </Link>
+            <Link to="/use-cases" className="text-sm text-black/70 hover:text-black transition-colors">
               Use Cases
-            </a>
-            <a href="#about" className="text-sm text-black/70 hover:text-black transition-colors">
+            </Link>
+            <Link to="/about" className="text-sm text-black/70 hover:text-black transition-colors">
               About
-            </a>
+            </Link>
           </div>
         </nav>
 
         {/* Hero Content */}
-        <div className="relative z-10 flex flex-col items-center justify-center h-full text-center px-6">
+        <div className="relative z-0 flex flex-col items-center justify-center h-full text-center px-6">
           {/* Badge */}
           <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -105,10 +99,6 @@ export default function Hero() {
               <div className="absolute inset-0 bg-gradient-to-r from-transparent to-white/10 opacity-0 group-hover:opacity-100 transition-opacity rounded-full" />
             </button>
 
-            {/* Secondary Action - Play Button */}
-            <button className="group h-11 w-11 rounded-full bg-black/10 shadow-lg border border-black/20 flex items-center justify-center hover:scale-110 transition-transform duration-300 focus:outline-none focus:ring-2 focus:ring-black/50">
-              <Play className="w-5 h-5 text-black fill-black ml-0.5" />
-            </button>
           </motion.div>
         </div>
       </div>

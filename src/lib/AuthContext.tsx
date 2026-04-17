@@ -43,11 +43,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // Check if user is already logged in
     const init = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setUser(user);
-      
-      if (user) {
-        await fetchUserProfile(user.id);
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        setUser(user);
+        
+        if (user) {
+          await fetchUserProfile(user.id);
+        }
+      } catch (error) {
+        console.error('Auth initialization error:', error);
+        setUser(null);
+        setUserProfile(null);
       }
       
       setLoading(false);
