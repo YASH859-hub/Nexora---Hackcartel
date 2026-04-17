@@ -9,6 +9,14 @@ import {
 import { cn } from '../lib/utils';
 import React, { useState } from 'react';
 import { useAuth } from '../lib/AuthContext';
+import {
+  extractActionItems,
+  fetchRecentEmails,
+  requestGmailAccessToken,
+  type EmailActionItem,
+  type ExtractionResult,
+  type GmailMessageSummary,
+} from '../lib/gmail';
 
 function TopNav() {
   const navigate = useNavigate();
@@ -129,6 +137,7 @@ function Sidebar({ activeSection, setActiveSection }: { activeSection: string, s
           <div className="px-3 text-xs font-semibold text-muted-foreground/50 uppercase tracking-widest mb-2">Primary</div>
           <NavItem icon={LayoutDashboard} label="Overview" active={activeSection === 'overview'} onClick={() => setActiveSection('overview')} />
           <NavItem icon={CreditCard} label="Commitments" active={activeSection === 'commitments'} onClick={() => setActiveSection('commitments')} />
+          <NavItem icon={Mail} label="Email Priority" active={activeSection === 'emails'} onClick={() => setActiveSection('emails')} />
           <NavItem icon={CheckSquare} label="Tasks" />
           <NavItem icon={Calendar} label="Calendar" />
           <NavItem icon={FileText} label="Documents" />
@@ -158,6 +167,178 @@ function Sidebar({ activeSection, setActiveSection }: { activeSection: string, s
         <NavItem icon={Settings} label="Settings" />
       </div>
     </aside>
+  );
+}
+
+function EmailPriorityDashboard() {
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [emails, setEmails] = useState<GmailMessageSummary[]>([]);
+  const [actionItems, setActionItems] = useState<EmailActionItem[]>([]);
+  const [extractionMode, setExtractionMode] = useState<ExtractionResult['mode'] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+
+  const priorityClassMap: Record<EmailActionItem['priority'], string> = {
+    high: 'bg-red-50 text-red-700 border-red-100',
+    medium: 'bg-amber-50 text-amber-700 border-amber-100',
+    low: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+  };
+
+  const connectAndAnalyze = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const token = accessToken || (await requestGmailAccessToken());
+      setAccessToken(token);
+
+      const fetchedEmails = await fetchRecentEmails(token, 12);
+      setEmails(fetchedEmails);
+
+      const extraction = await extractActionItems(fetchedEmails);
+      setActionItems(extraction.items);
+      setExtractionMode(extraction.mode);
+      setLastSyncedAt(new Date());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to sync Gmail data.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <main className="flex-1 overflow-y-auto px-8 py-8">
+      <div className="max-w-5xl mx-auto flex flex-col gap-8">
+        <motion.section
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="p-6 rounded-xl bg-card border border-border shadow-[0_1px_3px_rgb(0,0,0,0.05)]"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-serif italic text-primary">Email Priority List</h2>
+              <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
+                Connect Gmail, scan recent messages, and auto-extract high-impact tasks with DeepSeek.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                onClick={connectAndAnalyze}
+                disabled={loading}
+                className="h-10 px-5 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:opacity-90 transition-all disabled:opacity-60"
+              >
+                {loading ? 'Analyzing...' : accessToken ? 'Refresh Priority List' : 'Connect Gmail'}
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+            <span className="px-2.5 py-1 rounded-full bg-muted border border-border">
+              {accessToken ? 'Gmail Connected' : 'Gmail Not Connected'}
+            </span>
+            <span className="px-2.5 py-1 rounded-full bg-muted border border-border">
+              {emails.length} Emails Scanned
+            </span>
+            <span className="px-2.5 py-1 rounded-full bg-muted border border-border">
+              {actionItems.length} Action Items
+            </span>
+            {extractionMode && (
+              <span className="px-2.5 py-1 rounded-full bg-muted border border-border">
+                Mode: {extractionMode === 'deepseek' ? 'DeepSeek' : 'Rule-based'}
+              </span>
+            )}
+            {lastSyncedAt && (
+              <span className="px-2.5 py-1 rounded-full bg-muted border border-border">
+                Last sync {lastSyncedAt.toLocaleTimeString()}
+              </span>
+            )}
+          </div>
+
+          {error && (
+            <div className="mt-4 p-3 rounded-lg border border-destructive/20 bg-destructive/10 text-sm text-destructive">
+              {error}
+            </div>
+          )}
+        </motion.section>
+
+        <section className="grid grid-cols-12 gap-6 pb-10">
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 }}
+            className="col-span-12 lg:col-span-8 bg-card rounded-xl border border-border p-5"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-serif italic text-lg">Priority Actions</h3>
+              <span className="text-[0.7rem] uppercase tracking-widest text-muted-foreground">
+                {extractionMode === 'rules' ? 'Rule ranked' : 'DeepSeek ranked'}
+              </span>
+            </div>
+
+            {!loading && actionItems.length === 0 && (
+              <div className="rounded-lg border border-dashed border-border p-6 text-sm text-muted-foreground">
+                No extracted action items yet. Connect Gmail to build your priority queue.
+              </div>
+            )}
+
+            <div className="space-y-3">
+              {actionItems.map((item, index) => (
+                <div key={`${item.sourceEmailId || 'item'}-${index}`} className="rounded-lg border border-border p-4 hover:border-primary/30 transition-colors">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold">{item.title}</div>
+                      <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{item.summary}</p>
+                    </div>
+                    <span className={`text-[0.65rem] uppercase tracking-widest border rounded-full px-2.5 py-1 ${priorityClassMap[item.priority]}`}>
+                      {item.priority}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                    <div className="px-2.5 py-2 rounded-md bg-muted border border-border text-muted-foreground">
+                      Next: <span className="text-foreground font-medium">{item.nextAction}</span>
+                    </div>
+                    <div className="px-2.5 py-2 rounded-md bg-muted border border-border text-muted-foreground">
+                      Due: <span className="text-foreground font-medium">{item.dueDate || 'No explicit deadline'}</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="col-span-12 lg:col-span-4 bg-card rounded-xl border border-border p-5"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-serif italic text-lg">Recent Emails</h3>
+              <Mail className="w-4 h-4 text-muted-foreground" />
+            </div>
+
+            <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
+              {emails.length === 0 && (
+                <div className="text-sm text-muted-foreground rounded-lg border border-dashed border-border p-4">
+                  No email metadata loaded.
+                </div>
+              )}
+
+              {emails.map((email) => (
+                <div key={email.id} className="p-3 rounded-lg border border-border bg-background/60">
+                  <div className="text-xs font-semibold truncate">{email.subject}</div>
+                  <div className="text-[11px] text-muted-foreground truncate mt-0.5">{email.from}</div>
+                  <div className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{email.snippet}</div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        </section>
+      </div>
+    </main>
   );
 }
 
@@ -249,6 +430,11 @@ function MainWorkspace({ activeSection }: { activeSection: string }) {
   if (activeSection === 'commitments') {
     return <CommitmentsDashboard />;
   }
+
+  if (activeSection === 'emails') {
+    return <EmailPriorityDashboard />;
+  }
+
   return (
     <main className="flex-1 overflow-y-auto px-8 py-8 relative scrollbar-hide">
       <div className="max-w-4xl mx-auto flex flex-col gap-12">
