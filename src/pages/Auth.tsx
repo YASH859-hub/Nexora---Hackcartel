@@ -11,6 +11,7 @@ export default function Auth() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,6 +26,7 @@ export default function Auth() {
         setEmail('');
         setPassword('');
         setFullName('');
+        setPhoneNumber('');
         setIsSignUp(false);
         setError('Account created! Please sign in.');
       } else {
@@ -85,6 +87,24 @@ export default function Auth() {
                     required={isSignUp}
                     className="w-full px-4 py-2 bg-muted border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
                   />
+                </div>
+              )}
+
+              {/* Phone Number Input (Sign Up Only) */}
+              {isSignUp && (
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-2">
+                    Phone Number
+                  </label>
+                  <input
+                    type="tel"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    placeholder="+91 XXXXX XXXXX"
+                    required={isSignUp}
+                    className="w-full px-4 py-2 bg-muted border border-border rounded-lg text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Include country code (e.g., +91 for India)</p>
                 </div>
               )}
 

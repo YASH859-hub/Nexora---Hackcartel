@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './lib/AuthContext';
 import Hero from './pages/Hero';
 import Dashboard from './pages/Dashboard';
 import Auth from './pages/Auth';
+import OTPTest from './pages/OTPTest';
 
 function AppRoutes() {
   const { user, loading } = useAuth();
@@ -23,6 +24,7 @@ function AppRoutes() {
       <Route path="/" element={user ? <Navigate to="/dashboard" /> : <Hero />} />
       <Route path="/auth" element={user ? <Navigate to="/dashboard" /> : <Auth />} />
       <Route path="/dashboard" element={user ? <Dashboard /> : <Navigate to="/auth" />} />
+      <Route path="/otp-test" element={user ? <OTPTest /> : <Navigate to="/auth" />} />
     </Routes>
   );
 }
