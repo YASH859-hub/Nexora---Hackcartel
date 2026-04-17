@@ -4,9 +4,9 @@ import { Play, Heart, Globe, Users, Lock, Zap, Lightbulb } from 'lucide-react';
 
 export default function About() {
   return (
-    <div className="h-screen flex flex-col bg-background overflow-hidden">
+    <div className="flex flex-col min-h-screen bg-background">
       {/* Navbar */}
-      <nav className="flex items-center justify-between px-6 md:px-12 lg:px-20 py-5 font-body">
+      <nav className="flex items-center justify-between px-6 md:px-12 lg:px-20 py-5 font-body border-b border-border shrink-0">
         <Link to="/" className="text-xl font-semibold tracking-tight text-foreground">
           ✦ Nexora
         </Link>
@@ -22,8 +22,9 @@ export default function About() {
         </button>
       </nav>
 
-      {/* Hero Section */}
-      <div className="flex-1 relative z-10 flex flex-col items-center justify-center w-full px-6 md:px-12 lg:px-20">
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto flex flex-col">
+        <div className="relative z-10 flex flex-col items-center justify-center w-full px-6 md:px-12 lg:px-20 py-12">
         {/* Badge */}
         <motion.div
           initial={{ opacity: 0, y: 10 }}
@@ -141,6 +142,7 @@ export default function About() {
             })}
           </div>
         </motion.div>
+        </div>
       </div>
     </div>
   );

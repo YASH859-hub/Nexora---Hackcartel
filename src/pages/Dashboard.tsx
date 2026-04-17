@@ -4,7 +4,7 @@ import {
   Search, Bell, User, LayoutDashboard, CheckSquare, Calendar, 
   FileText, Zap, Mail, Settings, CheckCircle2, ChevronRight, 
   CreditCard, RefreshCw, Home, Clock, Send, Sparkles, ArrowRight,
-  Command, AlertCircle, LogOut
+  Command, AlertCircle, LogOut, TrendingUp, AlertTriangle
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import React, { useState } from 'react';
@@ -30,12 +30,12 @@ function TopNav() {
   };
 
   return (
-    <header className="h-[64px] min-h-[64px] flex items-center justify-between px-6 border-b border-border bg-card z-10 shrink-0">
+    <header className="h-[64px] min-h-[64px] flex items-center justify-between px-6 border-b border-border bg-background z-10 shrink-0 shadow-sm">
       <div className="flex items-center gap-2 w-[220px]">
         <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary text-primary-foreground">
           <Sparkles className="w-4 h-4" />
         </div>
-        <span className="font-serif italic text-2xl tracking-tight leading-none pt-1">Nexora</span>
+        <span className="font-display text-xl tracking-tight font-medium text-foreground">✦ Nexora</span>
       </div>
 
       <div className="flex-1 max-w-md mx-4">
@@ -44,10 +44,10 @@ function TopNav() {
           <input 
             type="text" 
             placeholder="Search anything (⌘K)" 
-            className="w-full h-9 pl-10 pr-12 bg-muted rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-ring/50 transition-all placeholder:text-muted-foreground border border-transparent"
+            className="w-full h-9 pl-10 pr-12 bg-secondary rounded-md text-sm font-body focus:outline-none focus:ring-1 focus:ring-accent/50 transition-all placeholder:text-muted-foreground border border-border/50 hover:border-border"
           />
           <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
-            <kbd className="hidden sm:inline-flex h-5 items-center gap-1 rounded border border-border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+            <kbd className="hidden sm:inline-flex h-5 items-center gap-1 rounded border border-border bg-secondary/50 px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
               <Command className="w-3 h-3" /> K
             </kbd>
           </div>
@@ -55,16 +55,16 @@ function TopNav() {
       </div>
 
       <div className="flex items-center justify-end gap-5 w-[220px]">
-        <div className="text-sm font-medium text-muted-foreground">Today</div>
-        <button className="relative w-8 h-8 rounded-full flex items-center justify-center hover:bg-muted transition-colors">
-          <Bell className="w-4 h-4" />
-          <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-destructive rounded-full border border-background"></span>
+        <div className="text-sm font-medium text-muted-foreground font-body">Today</div>
+        <button className="relative w-8 h-8 rounded-full flex items-center justify-center hover:bg-secondary transition-colors">
+          <Bell className="w-4 h-4 text-foreground" />
+          <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-accent rounded-full border border-background"></span>
         </button>
         
         <div className="relative">
           <button 
             onClick={() => setShowProfile(!showProfile)}
-            className="w-8 h-8 rounded-full bg-border overflow-hidden border border-border/50 hover:ring-2 hover:ring-border transition-all flex-shrink-0"
+            className="w-8 h-8 rounded-full bg-border overflow-hidden border border-border/50 hover:ring-2 hover:ring-accent transition-all flex-shrink-0"
           >
             <img src="https://picsum.photos/seed/yash/100/100" alt="Profile avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
           </button>
@@ -74,22 +74,22 @@ function TopNav() {
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
-              className="absolute top-full right-0 mt-2 bg-card rounded-lg border border-border shadow-lg p-4 w-64 z-50"
+              className="absolute top-full right-0 mt-2 bg-background rounded-lg border border-border shadow-lg p-4 w-64 z-[100]"
             >
               <div className="flex items-center gap-3 mb-4 pb-4 border-b border-border">
                 <img src="https://picsum.photos/seed/yash/100/100" alt="Profile" className="w-10 h-10 rounded-full" referrerPolicy="no-referrer" />
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium text-sm truncate">{userProfile?.full_name || 'User'}</div>
+                  <div className="font-medium text-sm truncate font-body">{userProfile?.full_name || 'User'}</div>
                   <div className="text-xs text-muted-foreground truncate">{user?.email}</div>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <button className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
+                <button className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground font-body">
                   <User className="w-4 h-4" />
                   Edit Profile
                 </button>
-                <button className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
+                <button className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground font-body">
                   <Settings className="w-4 h-4" />
                   Settings
                 </button>
@@ -98,7 +98,7 @@ function TopNav() {
               <div className="mt-4 pt-4 border-t border-border">
                 <button
                   onClick={handleLogout}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm bg-destructive/10 hover:bg-destructive/20 text-destructive transition-colors font-medium"
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm bg-accent/10 hover:bg-accent/20 text-accent transition-colors font-medium font-body"
                 >
                   <LogOut className="w-4 h-4" />
                   Sign Out
@@ -117,13 +117,13 @@ function NavItem({ icon: Icon, label, active = false, onClick }: { icon: any, la
     <button 
       onClick={onClick}
       className={cn(
-        "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all group outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+        "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all group outline-none focus-visible:ring-2 focus-visible:ring-accent/50 font-body",
         active 
-          ? "bg-secondary text-secondary-foreground font-medium" 
-          : "text-muted-foreground hover:bg-muted hover:text-foreground hover:translate-x-0.5"
+          ? "bg-secondary text-foreground font-medium" 
+          : "text-muted-foreground hover:bg-secondary hover:text-foreground hover:translate-x-0.5"
       )}
     >
-      <Icon className={cn("w-4 h-4", active ? "text-primary" : "text-muted-foreground group-hover:text-foreground")} />
+      <Icon className={cn("w-4 h-4", active ? "text-accent" : "text-muted-foreground group-hover:text-foreground")} />
       <span>{label}</span>
     </button>
   );
@@ -131,10 +131,10 @@ function NavItem({ icon: Icon, label, active = false, onClick }: { icon: any, la
 
 function Sidebar({ activeSection, setActiveSection }: { activeSection: string, setActiveSection: (section: string) => void }) {
   return (
-    <aside className="w-[220px] flex-shrink-0 border-r border-border bg-card flex flex-col h-full py-6 px-3">
+    <aside className="w-[220px] flex-shrink-0 border-r border-border bg-background flex flex-col h-full py-6 px-3">
       <div className="flex-1 flex flex-col gap-8">
         <div className="flex flex-col gap-1">
-          <div className="px-3 text-xs font-semibold text-muted-foreground/50 uppercase tracking-widest mb-2">Primary</div>
+          <div className="px-3 text-xs font-semibold text-muted-foreground/50 uppercase tracking-widest mb-2 font-body">Primary</div>
           <NavItem icon={LayoutDashboard} label="Overview" active={activeSection === 'overview'} onClick={() => setActiveSection('overview')} />
           <NavItem icon={CreditCard} label="Commitments" active={activeSection === 'commitments'} onClick={() => setActiveSection('commitments')} />
           <NavItem icon={Mail} label="Email Priority" active={activeSection === 'emails'} onClick={() => setActiveSection('emails')} />
@@ -145,20 +145,20 @@ function Sidebar({ activeSection, setActiveSection }: { activeSection: string, s
         </div>
 
         <div className="flex flex-col gap-1">
-          <div className="px-3 text-xs font-semibold text-muted-foreground/50 uppercase tracking-widest mb-2">Connected</div>
-          <button className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-all group">
+          <div className="px-3 text-xs font-semibold text-muted-foreground/50 uppercase tracking-widest mb-2 font-body">Connected</div>
+          <button className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm text-muted-foreground hover:bg-secondary hover:text-foreground transition-all group font-body">
             <div className="flex items-center gap-3">
               <Mail className="w-4 h-4" />
               <span>Gmail</span>
             </div>
-            <span className="text-xs text-[#10B981]">✓</span>
+            <span className="text-xs text-accent">✓</span>
           </button>
-          <button className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-all group">
+          <button className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm text-muted-foreground hover:bg-secondary hover:text-foreground transition-all group font-body">
             <div className="flex items-center gap-3">
               <Calendar className="w-4 h-4" />
               <span>Calendar</span>
             </div>
-            <span className="text-xs text-[#10B981]">✓</span>
+            <span className="text-xs text-accent">✓</span>
           </button>
         </div>
       </div>
@@ -347,9 +347,8 @@ function ActionPill({ label }: { label: string }) {
     <motion.button 
       whileHover={{ scale: 1.02, y: -1 }}
       whileTap={{ scale: 0.98 }}
-      className="px-[14px] py-[6px] rounded-full bg-card border border-border text-[0.75rem] font-medium text-primary hover:shadow-sm transition-all focus:outline-none focus:ring-1 focus:ring-ring"
+      className="px-[14px] py-[6px] rounded-full bg-background border border-border text-[0.75rem] font-medium text-foreground hover:bg-secondary hover:shadow-sm transition-all focus:outline-none focus:ring-1 focus:ring-accent/50 font-body"
     >
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/5 opacity-0 group-hover:opacity-100 transition-opacity" />
       {label}
     </motion.button>
   );
@@ -370,26 +369,26 @@ function CommitmentsDashboard() {
     <main className="flex-1 overflow-y-auto px-8 py-8">
       <div className="max-w-5xl mx-auto">
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-          <h2 className="text-2xl font-serif italic mb-8">Financial Commitments</h2>
+          <h2 className="text-2xl font-display font-semibold mb-8 text-foreground">Financial Commitments</h2>
         </motion.div>
 
         <div className="grid gap-8">
           {/* Bills Section */}
           <motion.section initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
-            <h3 className="text-lg font-semibold mb-4">Bills Due</h3>
+            <h3 className="text-lg font-semibold font-display mb-4 text-foreground">Bills Due</h3>
             <div className="space-y-3">
               {bills.map(bill => (
-                <div key={bill.id} className="flex items-center justify-between p-4 rounded-lg bg-card border border-border hover:border-primary/50 transition-colors">
+                <div key={bill.id} className="flex items-center justify-between p-4 rounded-lg bg-background border border-border hover:border-accent/50 hover:shadow-md transition-all">
                   <div className="flex items-center gap-3">
                     <div className="w-3 h-3 rounded-full" style={{ backgroundColor: bill.color }} />
                     <div>
-                      <div className="font-medium">{bill.name}</div>
-                      <div className="text-sm text-muted-foreground">{bill.dueDate}</div>
+                      <div className="font-medium font-body text-foreground">{bill.name}</div>
+                      <div className="text-sm text-muted-foreground font-body">{bill.dueDate}</div>
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
-                    <div className="font-semibold text-right">{bill.amount}</div>
-                    <button className="px-3 py-1 rounded bg-primary/10 text-primary hover:bg-primary/20 text-sm transition-colors">Pay</button>
+                    <div className="font-semibold text-right font-body text-foreground">{bill.amount}</div>
+                    <button className="px-3 py-1 rounded bg-accent/10 text-accent hover:bg-accent/20 text-sm transition-colors font-body font-medium">Pay</button>
                   </div>
                 </div>
               ))}
@@ -398,23 +397,23 @@ function CommitmentsDashboard() {
 
           {/* Subscriptions Section */}
           <motion.section initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-            <h3 className="text-lg font-semibold mb-4">Active Subscriptions</h3>
+            <h3 className="text-lg font-semibold font-display mb-4 text-foreground">Active Subscriptions</h3>
             <div className="space-y-3">
               {subscriptions.map(sub => (
-                <div key={sub.id} className="flex items-center justify-between p-4 rounded-lg bg-card border border-border hover:border-primary/50 transition-colors">
+                <div key={sub.id} className="flex items-center justify-between p-4 rounded-lg bg-background border border-border hover:border-accent/50 hover:shadow-md transition-all">
                   <div className="flex items-center gap-4">
                     <div className={`w-3 h-3 rounded-full`} style={{ backgroundColor: sub.color }} />
                     <div>
-                      <div className="font-medium">{sub.name}</div>
-                      <div className="text-sm text-muted-foreground">{sub.date} • {sub.source}</div>
+                      <div className="font-medium font-body text-foreground">{sub.name}</div>
+                      <div className="text-sm text-muted-foreground font-body">{sub.date} • {sub.source}</div>
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
                     <div className="text-right">
-                      <div className="font-semibold">{sub.amount}</div>
-                      <div className="text-xs text-muted-foreground capitalize">{sub.status}</div>
+                      <div className="font-semibold font-body text-foreground">{sub.amount}</div>
+                      <div className="text-xs text-muted-foreground capitalize font-body">{sub.status}</div>
                     </div>
-                    <button className="px-3 py-1 rounded bg-secondary text-secondary-foreground text-sm hover:opacity-80 transition-opacity">Manage</button>
+                    <button className="px-3 py-1 rounded bg-secondary text-foreground text-sm hover:bg-secondary/80 transition-colors font-body font-medium">Manage</button>
                   </div>
                 </div>
               ))}
@@ -442,21 +441,21 @@ function MainWorkspace({ activeSection }: { activeSection: string }) {
         {/* Header / Brief */}
         <section className="flex flex-col gap-6">
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
-            <h2 className="text-sm font-semibold flex items-center gap-2">
-              Good morning, <span className="font-serif italic text-lg ml-0.5 font-normal">Yash</span>
+            <h2 className="text-sm font-semibold flex items-center gap-2 font-body text-foreground">
+              Good morning, <span className="font-display text-lg ml-0.5 font-semibold text-foreground">Yash</span>
             </h2>
           </motion.div>
           
           <motion.div 
             initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1 }}
-            className="p-6 rounded-xl bg-card border border-border shadow-[0_1px_3px_rgb(0,0,0,0.05)] relative flex items-center justify-between"
+            className="p-6 rounded-xl bg-background border border-border shadow-sm relative flex items-center justify-between"
           >
             <div>
-              <h1 className="text-2xl font-serif italic text-primary mb-3">
+              <h1 className="text-2xl font-display font-semibold text-foreground mb-3">
                 You have <span className="text-accent pr-1">5 things</span> that need attention today.
               </h1>
               
-              <ul className="text-sm text-muted-foreground w-max grid grid-cols-2 gap-x-6 gap-y-2">
+              <ul className="text-sm text-muted-foreground w-max grid grid-cols-2 gap-x-6 gap-y-2 font-body">
                 <li className="flex items-center gap-2">
                   <span className="text-accent font-bold leading-none">•</span>
                   <span>Credit card bill due tomorrow</span>
@@ -480,7 +479,7 @@ function MainWorkspace({ activeSection }: { activeSection: string }) {
               </ul>
             </div>
 
-            <button className="h-10 px-5 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:opacity-90 transition-all outline-none">
+            <button className="h-10 px-5 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:opacity-90 transition-all outline-none font-body">
               Handle Everything
             </button>
           </motion.div>
@@ -505,40 +504,40 @@ function MainWorkspace({ activeSection }: { activeSection: string }) {
           {/* Life Map */}
           <motion.div 
             initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.3 }}
-            className="col-span-12 lg:col-span-7 bg-card rounded-xl border border-border p-4"
+            className="col-span-12 lg:col-span-7 bg-background rounded-xl border border-border p-4"
           >
             <div className="flex justify-between items-center mb-4">
               <div className="flex items-center gap-2">
-                <h3 className="font-serif italic text-lg font-normal mb-0">
+                <h3 className="font-display font-semibold text-lg mb-0 text-foreground">
                   Life Map
                 </h3>
               </div>
-              <span className="text-[0.7rem] text-muted-foreground uppercase tracking-widest">TIMELINE VIEW</span>
+              <span className="text-[0.7rem] text-muted-foreground uppercase tracking-widest font-body">TIMELINE VIEW</span>
             </div>
             
             <div className="flex flex-col gap-3">
               
-              <div className="grid grid-cols-[100px_1fr_80px] items-center text-[0.8125rem] pb-2 border-b border-muted">
+              <div className="grid grid-cols-[100px_1fr_80px] items-center text-[0.8125rem] pb-2 border-b border-border font-body">
                 <span className="text-muted-foreground">June 14</span>
-                <span className="flex items-center gap-2 font-medium"><div className="w-1.5 h-1.5 rounded-full bg-[#EF4444] shadow-[0_0_8px_rgba(239,68,68,0.4)]" /> AMEX Gold Bill</span>
+                <span className="flex items-center gap-2 font-medium text-foreground"><div className="w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_8px_rgba(239,68,68,0.4)]" /> AMEX Gold Bill</span>
                 <span className="text-right text-muted-foreground">Gmail</span>
               </div>
               
-              <div className="grid grid-cols-[100px_1fr_80px] items-center text-[0.8125rem] pb-2 border-b border-muted">
+              <div className="grid grid-cols-[100px_1fr_80px] items-center text-[0.8125rem] pb-2 border-b border-border font-body">
                 <span className="text-muted-foreground">June 16</span>
-                <span className="flex items-center gap-2 font-medium"><div className="w-1.5 h-1.5 rounded-full bg-[#F59E0B]" /> Netflix Renewal</span>
+                <span className="flex items-center gap-2 font-medium text-foreground"><div className="w-1.5 h-1.5 rounded-full bg-[#F59E0B]" /> Netflix Renewal</span>
                 <span className="text-right text-muted-foreground">Auto</span>
               </div>
               
-              <div className="grid grid-cols-[100px_1fr_80px] items-center text-[0.8125rem] pb-2 border-b border-muted">
+              <div className="grid grid-cols-[100px_1fr_80px] items-center text-[0.8125rem] pb-2 border-b border-border font-body">
                 <span className="text-muted-foreground">June 18</span>
-                <span className="flex items-center gap-2 font-medium"><div className="w-1.5 h-1.5 rounded-full bg-[#F59E0B]" /> Rent Payment</span>
+                <span className="flex items-center gap-2 font-medium text-foreground"><div className="w-1.5 h-1.5 rounded-full bg-[#F59E0B]" /> Rent Payment</span>
                 <span className="text-right text-muted-foreground">Bank</span>
               </div>
 
-              <div className="grid grid-cols-[100px_1fr_80px] items-center text-[0.8125rem] pb-2 border-b border-muted">
+              <div className="grid grid-cols-[100px_1fr_80px] items-center text-[0.8125rem] pb-2 border-b border-border font-body">
                 <span className="text-muted-foreground">June 12</span>
-                <span className="flex items-center gap-2 font-medium opacity-50"><div className="w-1.5 h-1.5 rounded-full bg-[#10B981]" /> Gym Session</span>
+                <span className="flex items-center gap-2 font-medium text-foreground opacity-50"><div className="w-1.5 h-1.5 rounded-full bg-[#10B981]" /> Gym Session</span>
                 <span className="text-right text-muted-foreground opacity-50">Cal</span>
               </div>
 
@@ -550,11 +549,11 @@ function MainWorkspace({ activeSection }: { activeSection: string }) {
             {/* Financial Commitments */}
             <motion.div 
               initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.4 }}
-              className="bg-card rounded-xl border border-border p-4 flex flex-col"
+              className="bg-background rounded-xl border border-border p-4 flex flex-col"
             >
               <div className="flex justify-between items-center mb-4">
-                <span className="text-sm font-semibold">Financial Load</span>
-                <span className="text-sm font-semibold">₹24,500</span>
+                <span className="text-sm font-semibold font-display text-foreground">Financial Load</span>
+                <span className="text-sm font-semibold font-body text-foreground">₹24,500</span>
               </div>
               
               <div className="h-20 w-full mt-2 relative">
@@ -562,7 +561,7 @@ function MainWorkspace({ activeSection }: { activeSection: string }) {
                   <path d="M0,35 Q25,30 50,20 T100,5" fill="none" className="stroke-accent stroke-2" />
                 </svg>
               </div>
-              <div className="text-[0.7rem] text-muted-foreground mt-2">
+              <div className="text-[0.7rem] text-muted-foreground mt-2 font-body">
                 Projected total for this week
               </div>
             </motion.div>
@@ -571,21 +570,21 @@ function MainWorkspace({ activeSection }: { activeSection: string }) {
             <div className="grid grid-cols-2 gap-4">
               <motion.div 
                 initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.5 }}
-                className="bg-card rounded-xl border border-border p-3"
+                className="bg-background rounded-xl border border-border p-3"
               >
-                <div className="text-sm font-semibold mb-3">Things you'll need soon</div>
+                <div className="text-sm font-semibold mb-3 font-display text-foreground">Things you'll need soon</div>
                 <div className="flex gap-2">
-                  <div className="px-3 py-1.5 rounded-full bg-muted text-xs font-medium border border-transparent">📄 Passport</div>
-                  <div className="px-3 py-1.5 rounded-full bg-muted text-xs font-medium border border-transparent">📄 Insurance</div>
+                  <div className="px-3 py-1.5 rounded-full bg-secondary text-xs font-medium border border-border font-body">📄 Passport</div>
+                  <div className="px-3 py-1.5 rounded-full bg-secondary text-xs font-medium border border-border font-body">📄 Insurance</div>
                 </div>
               </motion.div>
 
               <motion.div 
                 initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.6 }}
-                className="rounded-xl p-3 bg-[#F0F9FF] border border-[#BAE6FD]"
+                className="rounded-xl p-3 bg-accent/5 border border-accent/20"
               >
-                <div className="text-[0.75rem] text-[#0369A1] font-semibold mb-1">📬 WhatsApp Brief sent</div>
-                <div className="text-[0.7rem] text-[#0C4A6E] leading-snug">
+                <div className="text-[0.75rem] text-accent font-semibold mb-1 font-body">📬 WhatsApp Brief sent</div>
+                <div className="text-[0.7rem] text-accent/80 leading-snug font-body">
                   Good morning ☀️ • 1 bill due tomorrow • 2 renewals this week.
                 </div>
               </motion.div>
@@ -671,8 +670,8 @@ function ContextPanel() {
   };
 
   return (
-    <aside className="w-[280px] flex-shrink-0 border-l border-border bg-card flex flex-col h-full p-6">
-      <div className="text-[0.75rem] text-muted-foreground uppercase tracking-widest mb-5">
+    <aside className="w-[280px] flex-shrink-0 border-l border-border bg-background flex flex-col h-full p-6">
+      <div className="text-[0.75rem] text-muted-foreground uppercase tracking-widest mb-5 font-body">
         Chief of Staff
       </div>
       
@@ -684,9 +683,9 @@ function ContextPanel() {
               key={message.id}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className={`text-[0.8125rem] p-3 rounded-[12px] leading-snug max-w-[85%] ${
+              className={`text-[0.8125rem] p-3 rounded-[12px] leading-snug max-w-[85%] font-body ${
                 message.sender === 'bot'
-                  ? 'bg-muted rounded-bl-[0] mr-auto'
+                  ? 'bg-secondary text-foreground rounded-bl-[0] mr-auto'
                   : 'bg-primary text-primary-foreground rounded-br-[0] ml-auto'
               }`}
             >
@@ -698,7 +697,7 @@ function ContextPanel() {
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="bg-muted text-[0.8125rem] p-3 rounded-[12px] rounded-bl-[0] mr-auto max-w-[85%]"
+              className="bg-secondary text-[0.8125rem] p-3 rounded-[12px] rounded-bl-[0] mr-auto max-w-[85%] text-foreground"
             >
               <div className="flex items-center gap-1">
                 <div className="flex gap-1">
@@ -717,7 +716,7 @@ function ContextPanel() {
             <button
               key={index}
               onClick={() => handleQuickResponse(response)}
-              className="text-[0.75rem] px-3 py-2 border border-border rounded-lg cursor-pointer text-muted-foreground hover:bg-muted transition-colors text-left"
+              className="text-[0.75rem] px-3 py-2 border border-border rounded-lg cursor-pointer text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors text-left font-body"
             >
               {response}
             </button>
@@ -733,7 +732,7 @@ function ContextPanel() {
               onChange={(e) => setInputValue(e.target.value)}
               onKeyPress={handleKeyPress}
               placeholder="Ask me anything..."
-              className="flex-1 text-sm px-3 py-2 border border-border rounded-lg bg-background focus:outline-none focus:ring-1 focus:ring-ring/50"
+              className="flex-1 text-sm px-3 py-2 border border-border rounded-lg bg-background focus:outline-none focus:ring-1 focus:ring-accent/50 font-body placeholder:text-muted-foreground"
             />
             <button
               onClick={() => handleSendMessage(inputValue)}
@@ -753,7 +752,7 @@ export default function Dashboard() {
   const [activeSection, setActiveSection] = useState('overview');
 
   return (
-    <div className="h-screen flex flex-col bg-background overflow-hidden text-foreground antialiased selection:bg-muted selection:text-foreground">
+    <div className="h-screen flex flex-col bg-background overflow-hidden text-foreground antialiased selection:bg-secondary selection:text-foreground font-body">
       <TopNav />
       <div className="flex-1 flex overflow-hidden relative">
         <Sidebar activeSection={activeSection} setActiveSection={setActiveSection} />
