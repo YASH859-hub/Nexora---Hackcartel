@@ -26,15 +26,40 @@ export default function OTPTest() {
       return;
     }
 
-    const result = await generateAndSendOTP(user.id, phoneNumber);
+    try {
+      const otp = Math.floor(Math.random() * 1000000)
+        .toString()
+        .padStart(6, '0');
 
-    if (result.success) {
-      setMessage(`✓ OTP sent to ${phoneNumber}. Check your WhatsApp!`);
-      setMessageType('success');
-      setStep('verify');
-    } else {
-      setMessage(`✗ Failed to send OTP: ${result.error}`);
+      // Call backend API to send OTP
+      const response = await fetch('http://localhost:5000/api/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phoneNumber, otp })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.details || error.error);
+      }
+
+      const data = await response.json();
+
+      // Save OTP to database
+      const result = await generateAndSendOTP(user.id, phoneNumber);
+
+      if (result.success) {
+        setMessage(`✓ OTP sent to ${phoneNumber}. Check your WhatsApp!`);
+        setMessageType('success');
+        setStep('verify');
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Failed to send OTP';
+      setMessage(`✗ ${errorMsg}`);
       setMessageType('error');
+      console.error('Send OTP error:', error);
     }
   };
 
