@@ -98,7 +98,7 @@ export default function Hero() {
           >
             {/* Primary Button */}
             <button
-              onClick={() => navigate('/dashboard')}
+              onClick={() => navigate('/auth')}
               className="group relative px-8 py-3 rounded-full bg-white text-black font-medium text-sm font-body transition-all duration-300 hover:scale-105 active:scale-95 focus:outline-none focus:ring-2 focus:ring-white focus:ring-offset-2 focus:ring-offset-black/30 shadow-lg hover:shadow-xl"
             >
               Start
