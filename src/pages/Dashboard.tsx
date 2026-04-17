@@ -11,10 +11,14 @@ import React, { useState } from 'react';
 import { useAuth } from '../lib/AuthContext';
 import {
   extractActionItems,
+  extractCalendarActionItems,
+  createCalendarActionItem,
   fetchRecentEmails,
+  fetchUpcomingCalendarEvents,
   requestGmailAccessToken,
   type EmailActionItem,
   type ExtractionResult,
+  type CalendarEventSummary,
   type GmailMessageSummary,
 } from '../lib/gmail';
 
@@ -137,9 +141,8 @@ function Sidebar({ activeSection, setActiveSection }: { activeSection: string, s
           <div className="px-3 text-xs font-semibold text-muted-foreground/50 uppercase tracking-widest mb-2 font-body">Primary</div>
           <NavItem icon={LayoutDashboard} label="Overview" active={activeSection === 'overview'} onClick={() => setActiveSection('overview')} />
           <NavItem icon={CreditCard} label="Commitments" active={activeSection === 'commitments'} onClick={() => setActiveSection('commitments')} />
-          <NavItem icon={Mail} label="Email Priority" active={activeSection === 'emails'} onClick={() => setActiveSection('emails')} />
+          <NavItem icon={Calendar} label="Event Priority" active={activeSection === 'events'} onClick={() => setActiveSection('events')} />
           <NavItem icon={CheckSquare} label="Tasks" />
-          <NavItem icon={Calendar} label="Calendar" />
           <NavItem icon={FileText} label="Documents" />
           <NavItem icon={Zap} label="Automations" />
         </div>
@@ -170,11 +173,18 @@ function Sidebar({ activeSection, setActiveSection }: { activeSection: string, s
   );
 }
 
-function EmailPriorityDashboard() {
+function EventPriorityDashboard() {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [emails, setEmails] = useState<GmailMessageSummary[]>([]);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEventSummary[]>([]);
   const [actionItems, setActionItems] = useState<EmailActionItem[]>([]);
-  const [extractionMode, setExtractionMode] = useState<ExtractionResult['mode'] | null>(null);
+  const [extractionMode, setExtractionMode] = useState<ExtractionResult['mode'] | 'mixed' | null>(null);
+  const [activeCategory, setActiveCategory] = useState<'all' | 'work' | 'spenditure' | 'other'>('all');
+  const [manualEventTitle, setManualEventTitle] = useState('');
+  const [manualEventDate, setManualEventDate] = useState('');
+  const [manualEventTime, setManualEventTime] = useState('');
+  const [manualEventLocation, setManualEventLocation] = useState('');
+  const [manualEventDescription, setManualEventDescription] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
@@ -184,6 +194,25 @@ function EmailPriorityDashboard() {
     medium: 'bg-amber-50 text-amber-700 border-amber-100',
     low: 'bg-emerald-50 text-emerald-700 border-emerald-100',
   };
+
+  const categoryClassMap: Record<EmailActionItem['category'], string> = {
+    work: 'bg-sky-50 text-sky-700 border-sky-100',
+    spenditure: 'bg-violet-50 text-violet-700 border-violet-100',
+    other: 'bg-zinc-50 text-zinc-700 border-zinc-200',
+  };
+
+  const filteredActionItems =
+    activeCategory === 'all'
+      ? actionItems
+      : actionItems.filter((item) => item.category === activeCategory);
+
+  const totalSpendValue = actionItems
+    .filter((item) => item.category === 'spenditure')
+    .reduce((total, item) => {
+      const amountMatch = item.summary.match(/(?:₹|INR\s?)(\d[\d,]*(?:\.\d+)?)/i) || item.title.match(/(?:₹|INR\s?)(\d[\d,]*(?:\.\d+)?)/i);
+      const parsedAmount = amountMatch?.[1] ? Number(amountMatch[1].replace(/,/g, '')) : 0;
+      return total + (Number.isFinite(parsedAmount) ? parsedAmount : 0);
+    }, 0);
 
   const connectAndAnalyze = async () => {
     setLoading(true);
@@ -196,15 +225,61 @@ function EmailPriorityDashboard() {
       const fetchedEmails = await fetchRecentEmails(token, 12);
       setEmails(fetchedEmails);
 
-      const extraction = await extractActionItems(fetchedEmails);
-      setActionItems(extraction.items);
-      setExtractionMode(extraction.mode);
+      const fetchedCalendarEvents = await fetchUpcomingCalendarEvents(token, 12);
+      setCalendarEvents(fetchedCalendarEvents);
+
+      const emailExtraction = await extractActionItems(fetchedEmails);
+      const calendarExtraction = await extractCalendarActionItems(fetchedCalendarEvents);
+
+      setActionItems([...emailExtraction.items, ...calendarExtraction.items]);
+      setExtractionMode(
+        emailExtraction.mode === 'deepseek' && calendarExtraction.mode === 'deepseek'
+          ? 'deepseek'
+          : 'mixed',
+      );
       setLastSyncedAt(new Date());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to sync Gmail data.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const addManualCalendarEvent = () => {
+    if (!manualEventTitle.trim()) {
+      setError('Please enter an event title.');
+      return;
+    }
+
+    const start = manualEventDate
+      ? `${manualEventDate}${manualEventTime ? `T${manualEventTime}` : 'T09:00'}`
+      : new Date().toISOString();
+
+    const end = manualEventDate
+      ? `${manualEventDate}${manualEventTime ? `T${manualEventTime}` : 'T10:00'}`
+      : new Date(Date.now() + 60 * 60 * 1000).toISOString();
+
+    const manualEvent: CalendarEventSummary = {
+      id: `manual-${Date.now()}`,
+      title: manualEventTitle.trim(),
+      start,
+      end,
+      location: manualEventLocation.trim(),
+      description: manualEventDescription.trim(),
+      status: 'confirmed',
+      sourceType: 'calendar',
+    };
+
+    setCalendarEvents((prev) => [manualEvent, ...prev]);
+    setActionItems((prev) => [createCalendarActionItem(manualEvent), ...prev]);
+    setExtractionMode('mixed');
+    setManualEventTitle('');
+    setManualEventDate('');
+    setManualEventTime('');
+    setManualEventLocation('');
+    setManualEventDescription('');
+    setError(null);
+    setLastSyncedAt(new Date());
   };
 
   return (
@@ -217,9 +292,9 @@ function EmailPriorityDashboard() {
         >
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <h2 className="text-2xl font-serif italic text-primary">Email Priority List</h2>
+              <h2 className="text-2xl font-serif italic text-primary">Event Priority List</h2>
               <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-                Connect Gmail, scan recent messages, and auto-extract high-impact tasks with DeepSeek.
+                Event Priority merges Gmail and Calendar into one clean view for work, spenditure, and other priority items.
               </p>
             </div>
 
@@ -246,14 +321,89 @@ function EmailPriorityDashboard() {
             </span>
             {extractionMode && (
               <span className="px-2.5 py-1 rounded-full bg-muted border border-border">
-                Mode: {extractionMode === 'deepseek' ? 'DeepSeek' : 'Rule-based'}
+                Mode: {extractionMode === 'deepseek' ? 'DeepSeek' : extractionMode === 'mixed' ? 'Mixed' : 'Rule-based'}
               </span>
             )}
+            <span className="px-2.5 py-1 rounded-full bg-muted border border-border">
+              {calendarEvents.length} Calendar Events
+            </span>
             {lastSyncedAt && (
               <span className="px-2.5 py-1 rounded-full bg-muted border border-border">
                 Last sync {lastSyncedAt.toLocaleTimeString()}
               </span>
             )}
+          </div>
+
+          <div className="mt-4 rounded-xl border border-border bg-background p-4">
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <div>
+                <h3 className="font-serif italic text-lg">Add Manual Calendar Event</h3>
+                <p className="text-xs text-muted-foreground mt-1">Create an event locally and include it in the Event Priority list.</p>
+              </div>
+              <Calendar className="w-5 h-5 text-muted-foreground" />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+              <input
+                value={manualEventTitle}
+                onChange={(e) => setManualEventTitle(e.target.value)}
+                placeholder="Event title"
+                className="px-3 py-2 rounded-lg border border-border bg-muted text-sm"
+              />
+              <input
+                type="date"
+                value={manualEventDate}
+                onChange={(e) => setManualEventDate(e.target.value)}
+                className="px-3 py-2 rounded-lg border border-border bg-muted text-sm"
+              />
+              <input
+                type="time"
+                value={manualEventTime}
+                onChange={(e) => setManualEventTime(e.target.value)}
+                className="px-3 py-2 rounded-lg border border-border bg-muted text-sm"
+              />
+              <input
+                value={manualEventLocation}
+                onChange={(e) => setManualEventLocation(e.target.value)}
+                placeholder="Location"
+                className="px-3 py-2 rounded-lg border border-border bg-muted text-sm"
+              />
+              <button
+                onClick={addManualCalendarEvent}
+                className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90"
+              >
+                Add Event
+              </button>
+            </div>
+
+            <textarea
+              value={manualEventDescription}
+              onChange={(e) => setManualEventDescription(e.target.value)}
+              placeholder="Optional notes or agenda"
+              rows={3}
+              className="mt-3 w-full px-3 py-2 rounded-lg border border-border bg-muted text-sm resize-none"
+            />
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            {([
+              { key: 'all', label: 'All' },
+              { key: 'work', label: 'Work' },
+              { key: 'spenditure', label: 'Spenditure' },
+              { key: 'other', label: 'Other' },
+            ] as const).map((filter) => (
+              <button
+                key={filter.key}
+                onClick={() => setActiveCategory(filter.key)}
+                className={`px-3 py-1.5 rounded-full text-xs border transition-colors ${
+                  activeCategory === filter.key
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-background text-muted-foreground border-border hover:bg-muted'
+                }`}
+              >
+                {filter.label}
+              </button>
+            ))}
           </div>
 
           {error && (
@@ -277,23 +427,28 @@ function EmailPriorityDashboard() {
               </span>
             </div>
 
-            {!loading && actionItems.length === 0 && (
+            {!loading && filteredActionItems.length === 0 && (
               <div className="rounded-lg border border-dashed border-border p-6 text-sm text-muted-foreground">
                 No extracted action items yet. Connect Gmail to build your priority queue.
               </div>
             )}
 
             <div className="space-y-3">
-              {actionItems.map((item, index) => (
+              {filteredActionItems.map((item, index) => (
                 <div key={`${item.sourceEmailId || 'item'}-${index}`} className="rounded-lg border border-border p-4 hover:border-primary/30 transition-colors">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="text-sm font-semibold">{item.title}</div>
                       <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{item.summary}</p>
                     </div>
-                    <span className={`text-[0.65rem] uppercase tracking-widest border rounded-full px-2.5 py-1 ${priorityClassMap[item.priority]}`}>
-                      {item.priority}
-                    </span>
+                    <div className="flex flex-col items-end gap-2">
+                      <span className={`text-[0.65rem] uppercase tracking-widest border rounded-full px-2.5 py-1 ${categoryClassMap[item.category]}`}>
+                        {item.category}
+                      </span>
+                      <span className={`text-[0.65rem] uppercase tracking-widest border rounded-full px-2.5 py-1 ${priorityClassMap[item.priority]}`}>
+                        {item.priority}
+                      </span>
+                    </div>
                   </div>
 
                   <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
@@ -333,6 +488,99 @@ function EmailPriorityDashboard() {
                   <div className="text-[11px] text-muted-foreground truncate mt-0.5">{email.from}</div>
                   <div className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{email.snippet}</div>
                 </div>
+              ))}
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+            className="col-span-12 bg-card rounded-xl border border-border p-5"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-serif italic text-lg">Upcoming Calendar Events</h3>
+              <span className="text-[0.7rem] uppercase tracking-widest text-muted-foreground">Calendar synced</span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {calendarEvents.length === 0 && (
+                <div className="text-sm text-muted-foreground rounded-lg border border-dashed border-border p-4 col-span-full">
+                  No calendar events loaded yet. Connect Gmail and Calendar access to see upcoming appointments.
+                </div>
+              )}
+
+              {calendarEvents.map((event) => (
+                <div key={event.id} className="p-4 rounded-lg border border-border bg-background/60">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold">{event.title}</div>
+                      <div className="text-[11px] text-muted-foreground mt-1">{event.start || 'No start time'}</div>
+                    </div>
+                    <span className="text-[0.65rem] uppercase tracking-widest border rounded-full px-2.5 py-1 bg-sky-50 text-sky-700 border-sky-100">
+                      calendar
+                    </span>
+                  </div>
+                  <div className="mt-3 text-xs text-muted-foreground space-y-1">
+                    {event.location && <div>Location: {event.location}</div>}
+                    {event.description && <div className="line-clamp-2">{event.description}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        </section>
+
+        <section className="grid grid-cols-12 gap-6 pb-10">
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="col-span-12 lg:col-span-6 bg-card rounded-xl border border-border p-5"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-serif italic text-lg">Expense Tracker</h3>
+              <span className="text-[0.7rem] uppercase tracking-widest text-muted-foreground">Spending insights</span>
+            </div>
+            <div className="flex items-end justify-between gap-4">
+              <div>
+                <div className="text-sm text-muted-foreground">Monthly detected spend</div>
+                <div className="text-3xl font-semibold mt-1">₹{totalSpendValue.toLocaleString('en-IN')}</div>
+              </div>
+              <div className="text-xs text-muted-foreground text-right max-w-44">
+                Detected from spenditure-classified emails and calendar reminders.
+              </div>
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25 }}
+            className="col-span-12 lg:col-span-6 bg-card rounded-xl border border-border p-5"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-serif italic text-lg">Smart Filters</h3>
+              <span className="text-[0.7rem] uppercase tracking-widest text-muted-foreground">Priority + category</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {([
+                'all',
+                'work',
+                'spenditure',
+                'other',
+              ] as const).map((filter) => (
+                <button
+                  key={filter}
+                  onClick={() => setActiveCategory(filter)}
+                  className={`px-3 py-1.5 rounded-full text-xs border transition-colors ${
+                    activeCategory === filter
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-background text-muted-foreground border-border hover:bg-muted'
+                  }`}
+                >
+                  {filter}
+                </button>
               ))}
             </div>
           </motion.div>
@@ -430,8 +678,8 @@ function MainWorkspace({ activeSection }: { activeSection: string }) {
     return <CommitmentsDashboard />;
   }
 
-  if (activeSection === 'emails') {
-    return <EmailPriorityDashboard />;
+  if (activeSection === 'events') {
+    return <EventPriorityDashboard />;
   }
 
   return (

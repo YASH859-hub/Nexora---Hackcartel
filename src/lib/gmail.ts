@@ -1,4 +1,5 @@
 const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
+const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';
 const GOOGLE_IDENTITY_SCRIPT = 'https://accounts.google.com/gsi/client';
 
 export interface GmailMessageSummary {
@@ -12,10 +13,23 @@ export interface GmailMessageSummary {
 export interface EmailActionItem {
   title: string;
   summary: string;
+  category: 'work' | 'spenditure' | 'other';
   priority: 'high' | 'medium' | 'low';
   nextAction: string;
   dueDate?: string;
   sourceEmailId?: string;
+  sourceType: 'email' | 'calendar';
+}
+
+export interface CalendarEventSummary {
+  id: string;
+  title: string;
+  start: string;
+  end: string;
+  location: string;
+  description: string;
+  status: string;
+  sourceType: 'calendar';
 }
 
 export interface ExtractionResult {
@@ -76,7 +90,7 @@ export async function requestGmailAccessToken(): Promise<string> {
   return new Promise((resolve, reject) => {
     const tokenClient = window.google!.accounts.oauth2.initTokenClient({
       client_id: clientId,
-      scope: GMAIL_SCOPE,
+      scope: `${GMAIL_SCOPE} ${CALENDAR_SCOPE}`,
       callback: (response) => {
         if (!response.access_token) {
           reject(new Error(response.error || 'Failed to get Gmail access token.'));
@@ -176,6 +190,56 @@ function parseDueDate(rawText: string): string | undefined {
   return dateMatch?.[0];
 }
 
+function classifyEmail(message: GmailMessageSummary): EmailActionItem['category'] {
+  const text = `${message.from} ${message.subject} ${message.snippet}`.toLowerCase();
+
+  const spendSignals = [
+    'invoice', 'bill', 'payment', 'paid', 'subscription', 'renewal', 'receipt', 'transaction',
+    'refund', 'purchase', 'order', 'amount due', 'due now', 'credit card', 'debit', 'upi', 'netbanking',
+  ];
+  const workSignals = [
+    'meeting', 'schedule', 'calendar', 'invite', 'project', 'deadline', 'client', 'proposal',
+    'team', 'sync', 'standup', 'review', 'report', 'follow up', 'follow-up', 'action required',
+    'interview', 'assignment', 'onboarding', 'task', 'work', 'office',
+  ];
+
+  if (spendSignals.some((signal) => text.includes(signal))) return 'spenditure';
+  if (workSignals.some((signal) => text.includes(signal))) return 'work';
+  return 'other';
+}
+
+function classifyTextCategory(text: string): EmailActionItem['category'] {
+  const normalized = text.toLowerCase();
+
+  const spendSignals = [
+    'invoice', 'bill', 'payment', 'paid', 'subscription', 'renewal', 'receipt', 'transaction',
+    'refund', 'purchase', 'order', 'amount due', 'due now', 'credit card', 'debit', 'upi', 'netbanking',
+  ];
+  const workSignals = [
+    'meeting', 'schedule', 'calendar', 'invite', 'project', 'deadline', 'client', 'proposal',
+    'team', 'sync', 'standup', 'review', 'report', 'follow up', 'follow-up', 'action required',
+    'interview', 'assignment', 'onboarding', 'task', 'work', 'office', 'reminder',
+  ];
+
+  if (spendSignals.some((signal) => normalized.includes(signal))) return 'spenditure';
+  if (workSignals.some((signal) => normalized.includes(signal))) return 'work';
+  return 'other';
+}
+
+function inferPriority(text: string): EmailActionItem['priority'] {
+  const normalized = text.toLowerCase();
+  const highSignals = ['overdue', 'urgent', 'final reminder', 'payment due', 'action required', 'invoice', 'today', 'asap'];
+  const mediumSignals = ['renewal', 'meeting', 'review', 'confirm', 'verify', 'tomorrow', 'next week'];
+
+  if (highSignals.some((signal) => normalized.includes(signal))) return 'high';
+  if (mediumSignals.some((signal) => normalized.includes(signal))) return 'medium';
+  return 'low';
+}
+
+function formatCalendarDate(dateTime?: string, date?: string): string {
+  return dateTime || date || '';
+}
+
 function buildRuleBasedItems(messages: GmailMessageSummary[]): EmailActionItem[] {
   const actionSignals = [
     'due',
@@ -204,14 +268,14 @@ function buildRuleBasedItems(messages: GmailMessageSummary[]): EmailActionItem[]
         return null;
       }
 
-      const high = highSignals.some((signal) => text.includes(signal));
-      const medium = mediumSignals.some((signal) => text.includes(signal));
-      const priority: EmailActionItem['priority'] = high ? 'high' : medium ? 'medium' : 'low';
+      const priority = inferPriority(text);
       const dueDate = parseDueDate(`${message.subject} ${message.snippet}`);
+      const category = classifyEmail(message);
 
       return {
         title: message.subject || 'Email follow-up',
         summary: message.snippet || `Review message from ${message.from}`,
+        category,
         priority,
         nextAction:
           priority === 'high'
@@ -221,6 +285,7 @@ function buildRuleBasedItems(messages: GmailMessageSummary[]): EmailActionItem[]
             : 'Check this email and archive or defer as needed.',
         dueDate,
         sourceEmailId: message.id,
+        sourceType: 'email',
       } satisfies EmailActionItem;
     })
     .filter(Boolean) as EmailActionItem[];
@@ -256,7 +321,7 @@ async function extractWithDeepSeek(messages: GmailMessageSummary[]): Promise<Ema
         {
           role: 'system',
           content:
-            'You extract actionable items from email metadata. Return strict JSON array only. Each object must include title, summary, priority (high|medium|low), nextAction, dueDate, sourceEmailId.',
+            'You extract actionable items from email metadata. Return strict JSON array only. Each object must include title, summary, category (work|spenditure|other), priority (high|medium|low), nextAction, dueDate, sourceEmailId.',
         },
         {
           role: 'user',
@@ -295,10 +360,15 @@ async function extractWithDeepSeek(messages: GmailMessageSummary[]): Promise<Ema
       return {
         title: String(candidate.title || 'Untitled Action'),
         summary: String(candidate.summary || ''),
+        category:
+          candidate.category === 'work' || candidate.category === 'spenditure' || candidate.category === 'other'
+            ? candidate.category
+            : 'other',
         priority,
         nextAction: String(candidate.nextAction || 'Review this email and decide next step.'),
         dueDate: candidate.dueDate ? String(candidate.dueDate) : undefined,
         sourceEmailId: candidate.sourceEmailId ? String(candidate.sourceEmailId) : undefined,
+        sourceType: 'email',
       };
     })
     .filter((item): item is EmailActionItem => Boolean(item));
@@ -329,4 +399,181 @@ export async function extractActionItems(messages: GmailMessageSummary[]): Promi
 export async function extractActionItemsWithLlm(messages: GmailMessageSummary[]): Promise<EmailActionItem[]> {
   const result = await extractActionItems(messages);
   return result.items;
+}
+
+export async function fetchUpcomingCalendarEvents(accessToken: string, maxResults = 10): Promise<CalendarEventSummary[]> {
+  const apiKey = import.meta.env.VITE_GOOGLE_CALENDAR_API_KEY;
+  const timeMin = new Date().toISOString();
+  const params = new URLSearchParams({
+    maxResults: String(maxResults),
+    singleEvents: 'true',
+    orderBy: 'startTime',
+    timeMin,
+  });
+
+  if (apiKey) {
+    params.set('key', apiKey);
+  }
+
+  const response = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?${params.toString()}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error('Unable to fetch Calendar events.');
+  }
+
+  const json = await response.json();
+  const events: Array<{
+    id: string;
+    summary?: string;
+    start?: { dateTime?: string; date?: string };
+    end?: { dateTime?: string; date?: string };
+    location?: string;
+    description?: string;
+    status?: string;
+  }> = json.items || [];
+
+  return events.map((event) => ({
+    id: event.id,
+    title: event.summary || '(No Title)',
+    start: formatCalendarDate(event.start?.dateTime, event.start?.date),
+    end: formatCalendarDate(event.end?.dateTime, event.end?.date),
+    location: event.location || '',
+    description: event.description || '',
+    status: event.status || 'confirmed',
+    sourceType: 'calendar',
+  }));
+}
+
+function buildCalendarRuleBasedItems(events: CalendarEventSummary[]): EmailActionItem[] {
+  return events.map((event) => createCalendarActionItem(event));
+}
+
+export function createCalendarActionItem(event: CalendarEventSummary): EmailActionItem {
+  const text = `${event.title} ${event.location} ${event.description}`;
+  const category = classifyTextCategory(text);
+  const priority = inferPriority(text);
+
+  return {
+    title: event.title,
+    summary: event.description || event.location || 'Upcoming calendar event',
+    category,
+    priority,
+    nextAction: category === 'work' ? 'Prepare for this meeting or deadline.' : 'Review and plan for this event.',
+    dueDate: event.start,
+    sourceEmailId: event.id,
+    sourceType: 'calendar',
+  } satisfies EmailActionItem;
+}
+
+async function extractWithDeepSeekFromText(
+  items: Array<{
+    id: string;
+    text: string;
+    sourceType: 'email' | 'calendar';
+  }>,
+): Promise<EmailActionItem[]> {
+  const apiKey = import.meta.env.VITE_DEEPSEEK_API_KEY;
+  if (!apiKey) {
+    throw new Error('Missing VITE_DEEPSEEK_API_KEY in your .env.local file.');
+  }
+
+  const model = import.meta.env.VITE_DEEPSEEK_MODEL || 'deepseek-chat';
+  const response = await fetch('https://api.deepseek.com/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.1,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You extract structured email and calendar intelligence. Return strict JSON array only. Each object must include title, summary, category (work|spenditure|other), priority (high|medium|low), nextAction, dueDate, sourceEmailId, sourceType (email|calendar).',
+        },
+        {
+          role: 'user',
+          content: `Items: ${JSON.stringify(items)}`,
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || 'DeepSeek request failed.');
+  }
+
+  const json = await response.json();
+  const raw = json?.choices?.[0]?.message?.content || '[]';
+  const parsed = parseJsonPayload(raw);
+
+  if (!Array.isArray(parsed)) {
+    throw new Error('Unexpected DeepSeek output format.');
+  }
+
+  return parsed
+    .map((item): EmailActionItem | null => {
+      if (!item || typeof item !== 'object') {
+        return null;
+      }
+
+      const candidate = item as Record<string, unknown>;
+      const priorityRaw = String(candidate.priority || '').toLowerCase();
+      const priority: EmailActionItem['priority'] =
+        priorityRaw === 'high' || priorityRaw === 'medium' || priorityRaw === 'low'
+          ? priorityRaw
+          : 'medium';
+
+      const sourceType = candidate.sourceType === 'calendar' ? 'calendar' : 'email';
+
+      return {
+        title: String(candidate.title || 'Untitled Action'),
+        summary: String(candidate.summary || ''),
+        category:
+          candidate.category === 'work' || candidate.category === 'spenditure' || candidate.category === 'other'
+            ? candidate.category
+            : 'other',
+        priority,
+        nextAction: String(candidate.nextAction || 'Review this item and decide next step.'),
+        dueDate: candidate.dueDate ? String(candidate.dueDate) : undefined,
+        sourceEmailId: candidate.sourceEmailId ? String(candidate.sourceEmailId) : undefined,
+        sourceType,
+      };
+    })
+    .filter((item): item is EmailActionItem => Boolean(item));
+}
+
+export async function extractCalendarActionItems(events: CalendarEventSummary[]): Promise<ExtractionResult> {
+  if (!events.length) {
+    return { items: [], mode: 'rules' };
+  }
+
+  try {
+    const items = await extractWithDeepSeekFromText(
+      events.map((event) => ({
+        id: event.id,
+        sourceType: event.sourceType,
+        text: `${event.title} ${event.location} ${event.description} ${event.start}`,
+      })),
+    );
+
+    return { items: items.map((item) => ({ ...item, sourceType: 'calendar' })), mode: 'deepseek' };
+  } catch (error) {
+    if (error instanceof Error) {
+      console.warn('DeepSeek calendar extraction failed, using rule-based fallback:', error.message);
+    }
+
+    return {
+      items: buildCalendarRuleBasedItems(events),
+      mode: 'rules',
+      warning: 'Calendar insights switched to rule-based extraction.',
+    };
+  }
 }
