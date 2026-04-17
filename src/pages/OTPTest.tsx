@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/AuthContext';
 import { useOTPVerification } from '../lib/useOTPVerification';
@@ -16,7 +16,7 @@ export default function OTPTest() {
   const [message, setMessage] = useState<string | null>(null);
   const [messageType, setMessageType] = useState<'success' | 'error' | null>(null);
 
-  const handleSendOTP = async (e: React.FormEvent) => {
+  const handleSendOTP = async (e: FormEvent) => {
     e.preventDefault();
     setMessage(null);
 
@@ -63,7 +63,7 @@ export default function OTPTest() {
     }
   };
 
-  const handleVerifyOTP = async (e: React.FormEvent) => {
+  const handleVerifyOTP = async (e: FormEvent) => {
     e.preventDefault();
     setMessage(null);
 
