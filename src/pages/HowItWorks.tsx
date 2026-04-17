@@ -41,9 +41,9 @@ export default function HowItWorks() {
           <Link to="/use-cases" className="text-sm text-muted-foreground hover:text-foreground">Use Cases</Link>
           <Link to="/about" className="text-sm text-muted-foreground hover:text-foreground">About</Link>
         </div>
-        <button className="rounded-full px-5 py-2 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90">
-          Book a demo
-        </button>
+        <Link to="/Auth" className="rounded-full px-5 py-2 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90">
+          Get Started
+        </Link>
       </nav>
 
       {/* Content */}
@@ -86,12 +86,10 @@ export default function HowItWorks() {
           transition={{ duration: 0.6, delay: 0.3 }}
           className="mt-8 flex items-center gap-3"
         >
-          <button className="rounded-full px-6 py-3 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90">
-            Book a demo
-          </button>
-          <button className="ghost h-11 w-11 rounded-full border border-border bg-background shadow-[0_2px_12px_rgba(0,0,0,0.08)] hover:bg-muted flex items-center justify-center">
-            <Play className="h-4 w-4 fill-foreground" />
-          </button>
+          <Link to='/Auth' className="rounded-full px-6 py-3 text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90">
+            Get Started
+          </Link>
+          
         </motion.div>
 
         {/* Steps */}

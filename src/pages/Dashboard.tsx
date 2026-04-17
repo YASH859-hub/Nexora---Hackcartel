@@ -1,13 +1,13 @@
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Search, Bell, User, LayoutDashboard, CheckSquare, Calendar, 
-  FileText, Zap, Mail, Settings, CheckCircle2, ChevronRight, 
+import {
+  Search, Bell, User, LayoutDashboard, CheckSquare, Calendar,
+  FileText, Zap, Mail, Settings, CheckCircle2, ChevronRight,
   CreditCard, RefreshCw, Home, Clock, Send, Sparkles, ArrowRight,
-  Command, AlertCircle, LogOut, TrendingUp, AlertTriangle
+  Command, AlertCircle, LogOut, TrendingUp, AlertTriangle, Activity
 } from 'lucide-react';
 import { cn } from '../lib/utils';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../lib/AuthContext';
 import {
   extractActionItems,
@@ -21,8 +21,51 @@ import {
   type CalendarEventSummary,
   type GmailMessageSummary,
 } from '../lib/gmail';
+import { generateChatResponse, type ChatMessage } from '../lib/chat';
+import { useTheme } from '../lib/ThemeContext';
 
-function TopNav() {
+function AnimatedStatusTicker() {
+  const [index, setIndex] = useState(0);
+  const statuses = [
+    { text: 'Chief of Staff AI is active', icon: <Sparkles className="w-4 h-4 text-accent" /> },
+    { text: 'Monitoring inbox for action items', icon: <Mail className="w-4 h-4 text-foreground" /> },
+    { text: 'All systems optimal', icon: <CheckCircle2 className="w-4 h-4 text-emerald-500" /> },
+    { text: 'Tracking active commitments', icon: <Activity className="w-4 h-4 text-blue-500" /> },
+  ];
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setIndex((prev) => (prev + 1) % statuses.length);
+    }, 4000);
+    return () => clearInterval(timer);
+  }, []);
+
+  return (
+    <div className="flex-1 flex justify-center items-center">
+      <div className="px-6 py-2.5 rounded-full bg-secondary/50 border border-border/50 shadow-[0_1px_2px_rgba(0,0,0,0.05)] flex items-center gap-3 overflow-hidden w-[400px]">
+        <div className="flex items-center justify-center h-6 w-full relative">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={index}
+              initial={{ y: 20, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: -20, opacity: 0 }}
+              transition={{ duration: 0.3, ease: 'easeOut' }}
+              className="absolute inset-0 flex items-center justify-center gap-3 w-full"
+            >
+              {statuses[index].icon}
+              <span className="text-[13px] font-bold text-foreground font-body tracking-[0.05em] uppercase whitespace-nowrap">
+                {statuses[index].text}
+              </span>
+            </motion.div>
+          </AnimatePresence>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TopNav({ setActiveSection }: { setActiveSection: (section: string) => void }) {
   const navigate = useNavigate();
   const { user, userProfile, signOut } = useAuth();
   const [showProfile, setShowProfile] = useState(false);
@@ -36,43 +79,25 @@ function TopNav() {
   return (
     <header className="h-[64px] min-h-[64px] flex items-center justify-between px-6 border-b border-border bg-background z-10 shrink-0 shadow-sm">
       <div className="flex items-center gap-2 w-[220px]">
-        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary text-primary-foreground">
-          <Sparkles className="w-4 h-4" />
-        </div>
         <span className="font-display text-xl tracking-tight font-medium text-foreground">✦ Nexora</span>
       </div>
 
-      <div className="flex-1 max-w-md mx-4">
-        <div className="relative group">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-foreground transition-colors" />
-          <input 
-            type="text" 
-            placeholder="Search anything (⌘K)" 
-            className="w-full h-9 pl-10 pr-12 bg-secondary rounded-md text-sm font-body focus:outline-none focus:ring-1 focus:ring-accent/50 transition-all placeholder:text-muted-foreground border border-border/50 hover:border-border"
-          />
-          <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
-            <kbd className="hidden sm:inline-flex h-5 items-center gap-1 rounded border border-border bg-secondary/50 px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-              <Command className="w-3 h-3" /> K
-            </kbd>
-          </div>
-        </div>
-      </div>
+      <AnimatedStatusTicker />
 
       <div className="flex items-center justify-end gap-5 w-[220px]">
-        <div className="text-sm font-medium text-muted-foreground font-body">Today</div>
-        <button className="relative w-8 h-8 rounded-full flex items-center justify-center hover:bg-secondary transition-colors">
-          <Bell className="w-4 h-4 text-foreground" />
-          <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-accent rounded-full border border-background"></span>
-        </button>
-        
+        <div className="text-sm font-medium text-muted-foreground font-body">
+          {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+        </div>
+
+
         <div className="relative">
-          <button 
+          <button
             onClick={() => setShowProfile(!showProfile)}
             className="w-8 h-8 rounded-full bg-border overflow-hidden border border-border/50 hover:ring-2 hover:ring-accent transition-all flex-shrink-0"
           >
             <img src="https://picsum.photos/seed/yash/100/100" alt="Profile avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
           </button>
-          
+
           {showProfile && (
             <motion.div
               initial={{ opacity: 0, y: -10 }}
@@ -89,11 +114,15 @@ function TopNav() {
               </div>
 
               <div className="space-y-2">
-                <button className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground font-body">
+                <button 
+                  onClick={() => { setActiveSection('profile'); setShowProfile(false); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground font-body">
                   <User className="w-4 h-4" />
                   Edit Profile
                 </button>
-                <button className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground font-body">
+                <button 
+                  onClick={() => { setActiveSection('settings'); setShowProfile(false); }}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground font-body">
                   <Settings className="w-4 h-4" />
                   Settings
                 </button>
@@ -118,12 +147,12 @@ function TopNav() {
 
 function NavItem({ icon: Icon, label, active = false, onClick }: { icon: any, label: string, active?: boolean, onClick?: () => void }) {
   return (
-    <button 
+    <button
       onClick={onClick}
       className={cn(
         "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-all group outline-none focus-visible:ring-2 focus-visible:ring-accent/50 font-body",
-        active 
-          ? "bg-secondary text-foreground font-medium" 
+        active
+          ? "bg-secondary text-foreground font-medium"
           : "text-muted-foreground hover:bg-secondary hover:text-foreground hover:translate-x-0.5"
       )}
     >
@@ -167,7 +196,7 @@ function Sidebar({ activeSection, setActiveSection }: { activeSection: string, s
       </div>
 
       <div className="mt-auto">
-        <NavItem icon={Settings} label="Settings" />
+        <NavItem icon={Settings} label="Settings" active={activeSection === 'settings'} onClick={() => setActiveSection('settings')} />
       </div>
     </aside>
   );
@@ -592,7 +621,7 @@ function EventPriorityDashboard() {
 
 function ActionPill({ label }: { label: string }) {
   return (
-    <motion.button 
+    <motion.button
       whileHover={{ scale: 1.02, y: -1 }}
       whileTap={{ scale: 0.98 }}
       className="px-[14px] py-[6px] rounded-full bg-background border border-border text-[0.75rem] font-medium text-foreground hover:bg-secondary hover:shadow-sm transition-all focus:outline-none focus:ring-1 focus:ring-accent/50 font-body"
@@ -673,7 +702,239 @@ function CommitmentsDashboard() {
   );
 }
 
+function ProfileDashboard() {
+  const { userProfile, user, updateProfile } = useAuth();
+  const [name, setName] = useState(userProfile?.full_name || '');
+  const [phone, setPhone] = useState(userProfile?.phone || '');
+  const [timezone, setTimezone] = useState(userProfile?.timezone || 'UTC');
+  const [isSaving, setIsSaving] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+    setMessage('');
+    try {
+      await updateProfile({ full_name: name, phone, timezone });
+      setMessage('Profile updated successfully!');
+    } catch (error: any) {
+      setMessage(error.message || 'Failed to update profile.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <main className="flex-1 overflow-y-auto px-8 py-8">
+      <div className="max-w-2xl mx-auto flex flex-col gap-8">
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+          <h2 className="text-2xl font-display font-semibold mb-8 text-foreground">Edit Profile</h2>
+        </motion.div>
+
+        <motion.form 
+          initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+          onSubmit={handleSave} 
+          className="bg-card border border-border rounded-xl p-6 flex flex-col gap-6 shadow-[0_1px_3px_rgb(0,0,0,0.05)]"
+        >
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-medium font-body text-foreground">Email</label>
+            <input 
+              type="email" 
+              value={user?.email || ''} 
+              disabled 
+              className="w-full px-4 py-2 rounded-md bg-secondary text-muted-foreground border border-border font-body cursor-not-allowed"
+            />
+            <p className="text-xs text-muted-foreground">Your email cannot be changed.</p>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-medium font-body text-foreground">Full Name</label>
+            <input 
+              type="text" 
+              value={name} 
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Enter your full name" 
+              className="w-full px-4 py-2 rounded-md bg-background border border-border focus:outline-none focus:ring-1 focus:ring-accent/50 font-body"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium font-body text-foreground">Phone Number</label>
+              <input 
+                type="tel" 
+                value={phone} 
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+1 (555) 000-0000" 
+                className="w-full px-4 py-2 rounded-md bg-background border border-border focus:outline-none focus:ring-1 focus:ring-accent/50 font-body"
+              />
+              <p className="text-xs text-muted-foreground">Used for WhatsApp daily briefings.</p>
+            </div>
+            
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium font-body text-foreground">Timezone</label>
+              <select 
+                value={timezone} 
+                onChange={(e) => setTimezone(e.target.value)}
+                className="w-full px-4 py-2 rounded-md bg-background border border-border focus:outline-none focus:ring-1 focus:ring-accent/50 font-body cursor-pointer"
+              >
+                <option value="UTC">UTC (GMT+0)</option>
+                <option value="America/New_York">Eastern Time (ET)</option>
+                <option value="America/Chicago">Central Time (CT)</option>
+                <option value="America/Denver">Mountain Time (MT)</option>
+                <option value="America/Los_Angeles">Pacific Time (PT)</option>
+                <option value="Europe/London">London (GMT+1)</option>
+                <option value="Europe/Paris">Paris (CET)</option>
+                <option value="Asia/Dubai">Dubai (GST)</option>
+                <option value="Asia/Kolkata">India (IST)</option>
+                <option value="Asia/Tokyo">Tokyo (JST)</option>
+                <option value="Australia/Sydney">Sydney (AEST)</option>
+              </select>
+            </div>
+          </div>
+
+          {message && (
+            <div className={`p-3 rounded-lg text-sm font-body ${message.includes('success') ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-destructive/10 text-destructive border border-destructive/20'}`}>
+              {message}
+            </div>
+          )}
+
+          <div className="pt-4 border-t border-border flex justify-end">
+            <button 
+              type="submit" 
+              disabled={isSaving || !name.trim() || (name === userProfile?.full_name && phone === (userProfile?.phone || '') && timezone === (userProfile?.timezone || 'UTC'))}
+              className="px-5 py-2 rounded-lg bg-primary text-primary-foreground font-medium text-sm hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed font-body"
+            >
+              {isSaving ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </motion.form>
+      </div>
+    </main>
+  );
+}
+
+function SettingsDashboard() {
+  const { theme, setTheme } = useTheme();
+
+  return (
+    <main className="flex-1 overflow-y-auto px-8 py-8">
+      <div className="max-w-3xl mx-auto flex flex-col gap-8">
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+          <h2 className="text-2xl font-display font-semibold mb-8 text-foreground">Settings</h2>
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="grid gap-6">
+          <div className="bg-card border border-border rounded-xl p-6 flex flex-col gap-4 shadow-[0_1px_3px_rgb(0,0,0,0.05)]">
+            <h3 className="font-display text-lg font-medium border-b border-border pb-3">Appearance</h3>
+            <div className="flex items-center justify-between py-2">
+              <div>
+                <div className="font-medium font-body">Theme</div>
+                <div className="text-sm text-muted-foreground font-body">Select your preferred theme.</div>
+              </div>
+              <select 
+                value={theme}
+                onChange={(e) => setTheme(e.target.value as 'light' | 'dark' | 'system')}
+                className="px-3 py-1.5 rounded-md bg-secondary border border-border font-body text-sm outline-none cursor-pointer"
+              >
+                <option value="system">System Default</option>
+                <option value="light">Light Mode</option>
+                <option value="dark">Dark Mode</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="bg-card border border-border rounded-xl p-6 flex flex-col gap-4 shadow-[0_1px_3px_rgb(0,0,0,0.05)]">
+            <h3 className="font-display text-lg font-medium border-b border-border pb-3">Notifications</h3>
+            <div className="flex items-center justify-between py-2">
+              <div>
+                <div className="font-medium font-body">Email Summaries</div>
+                <div className="text-sm text-muted-foreground font-body">Receive a daily briefing email.</div>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" className="sr-only peer" defaultChecked />
+                <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent"></div>
+              </label>
+            </div>
+            <div className="flex items-center justify-between py-2">
+              <div>
+                <div className="font-medium font-body">WhatsApp Alerts</div>
+                <div className="text-sm text-muted-foreground font-body">Get notified about high priority tasks.</div>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" className="sr-only peer" defaultChecked />
+                <div className="w-11 h-6 bg-secondary peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-accent"></div>
+              </label>
+            </div>
+          </div>
+
+          <div className="bg-card border border-border rounded-xl p-6 flex flex-col gap-4 shadow-[0_1px_3px_rgb(0,0,0,0.05)]">
+            <h3 className="font-display text-lg font-medium border-b border-border pb-3">AI Persona</h3>
+            <div className="flex items-center justify-between py-2">
+              <div>
+                <div className="font-medium font-body">Tone of Voice</div>
+                <div className="text-sm text-muted-foreground font-body">How should the Chief of Staff talk to you?</div>
+              </div>
+              <select className="px-3 py-1.5 rounded-md bg-secondary border border-border font-body text-sm outline-none cursor-pointer">
+                <option>Strict Professional</option>
+                <option>Casual & Friendly</option>
+                <option>Extremely Concise</option>
+              </select>
+            </div>
+            <div className="flex flex-col gap-2 pt-2 border-t border-border mt-2">
+              <label className="font-medium font-body text-sm">Custom Instructions</label>
+              <textarea 
+                className="w-full h-24 p-3 rounded-md bg-background border border-border focus:outline-none focus:ring-1 focus:ring-accent/50 font-body text-sm resize-none"
+                placeholder="e.g., 'Never schedule meetings before 10 AM', 'Prioritize emails from my boss...'"
+              ></textarea>
+            </div>
+          </div>
+
+          <div className="bg-card border border-border rounded-xl p-6 flex flex-col gap-4 shadow-[0_1px_3px_rgb(0,0,0,0.05)]">
+            <h3 className="font-display text-lg font-medium border-b border-border pb-3">Integrations</h3>
+            <div className="flex items-center justify-between py-2">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center">
+                  <Calendar className="w-5 h-5 text-foreground" />
+                </div>
+                <div>
+                  <div className="font-medium font-body">Google Calendar</div>
+                  <div className="text-sm text-muted-foreground font-body">Connect to schedule tasks.</div>
+                </div>
+              </div>
+              <button className="px-4 py-2 rounded-lg bg-secondary text-foreground text-sm font-medium hover:bg-secondary/80 font-body border border-border">Connect</button>
+            </div>
+            
+            <div className="flex items-center justify-between py-2 border-t border-border pt-4 mt-2">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center">
+                  <Mail className="w-5 h-5 text-foreground" />
+                </div>
+                <div>
+                  <div className="font-medium font-body">Gmail</div>
+                  <div className="text-sm text-muted-foreground font-body">Extract action items from inbox.</div>
+                </div>
+              </div>
+              <button className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90 font-body">Connected</button>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    </main>
+  );
+}
+
 function MainWorkspace({ activeSection }: { activeSection: string }) {
+  const { userProfile } = useAuth();
+
+  if (activeSection === 'profile') {
+    return <ProfileDashboard />;
+  }
+
+  if (activeSection === 'settings') {
+    return <SettingsDashboard />;
+  }
+
   if (activeSection === 'commitments') {
     return <CommitmentsDashboard />;
   }
@@ -685,16 +946,16 @@ function MainWorkspace({ activeSection }: { activeSection: string }) {
   return (
     <main className="flex-1 overflow-y-auto px-8 py-8 relative scrollbar-hide">
       <div className="max-w-4xl mx-auto flex flex-col gap-12">
-        
+
         {/* Header / Brief */}
         <section className="flex flex-col gap-6">
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
-            <h2 className="text-sm font-semibold flex items-center gap-2 font-body text-foreground">
-              Good morning, <span className="font-display text-lg ml-0.5 font-semibold text-foreground">Yash</span>
+            <h2 className="text-xl font-semibold flex items-center gap-2 text-foreground font-display">
+              Greetings, <span className="text-2xl font-bold text-foreground">{userProfile?.full_name || 'User'}</span>
             </h2>
           </motion.div>
-          
-          <motion.div 
+
+          <motion.div
             initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1 }}
             className="p-6 rounded-xl bg-background border border-border shadow-sm relative flex items-center justify-between"
           >
@@ -702,7 +963,7 @@ function MainWorkspace({ activeSection }: { activeSection: string }) {
               <h1 className="text-2xl font-display font-semibold text-foreground mb-3">
                 You have <span className="text-accent pr-1">5 things</span> that need attention today.
               </h1>
-              
+
               <ul className="text-sm text-muted-foreground w-max grid grid-cols-2 gap-x-6 gap-y-2 font-body">
                 <li className="flex items-center gap-2">
                   <span className="text-accent font-bold leading-none">•</span>
@@ -734,7 +995,7 @@ function MainWorkspace({ activeSection }: { activeSection: string }) {
         </section>
 
         {/* Action Strip */}
-        <motion.section 
+        <motion.section
           initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.2 }}
           className="flex flex-wrap items-center gap-3"
         >
@@ -748,9 +1009,9 @@ function MainWorkspace({ activeSection }: { activeSection: string }) {
 
         {/* Grid Modules */}
         <section className="grid grid-cols-12 gap-6 pb-12">
-          
+
           {/* Life Map */}
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.3 }}
             className="col-span-12 lg:col-span-7 bg-background rounded-xl border border-border p-4"
           >
@@ -762,21 +1023,21 @@ function MainWorkspace({ activeSection }: { activeSection: string }) {
               </div>
               <span className="text-[0.7rem] text-muted-foreground uppercase tracking-widest font-body">TIMELINE VIEW</span>
             </div>
-            
+
             <div className="flex flex-col gap-3">
-              
+
               <div className="grid grid-cols-[100px_1fr_80px] items-center text-[0.8125rem] pb-2 border-b border-border font-body">
                 <span className="text-muted-foreground">June 14</span>
                 <span className="flex items-center gap-2 font-medium text-foreground"><div className="w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_8px_rgba(239,68,68,0.4)]" /> AMEX Gold Bill</span>
                 <span className="text-right text-muted-foreground">Gmail</span>
               </div>
-              
+
               <div className="grid grid-cols-[100px_1fr_80px] items-center text-[0.8125rem] pb-2 border-b border-border font-body">
                 <span className="text-muted-foreground">June 16</span>
                 <span className="flex items-center gap-2 font-medium text-foreground"><div className="w-1.5 h-1.5 rounded-full bg-[#F59E0B]" /> Netflix Renewal</span>
                 <span className="text-right text-muted-foreground">Auto</span>
               </div>
-              
+
               <div className="grid grid-cols-[100px_1fr_80px] items-center text-[0.8125rem] pb-2 border-b border-border font-body">
                 <span className="text-muted-foreground">June 18</span>
                 <span className="flex items-center gap-2 font-medium text-foreground"><div className="w-1.5 h-1.5 rounded-full bg-[#F59E0B]" /> Rent Payment</span>
@@ -793,9 +1054,9 @@ function MainWorkspace({ activeSection }: { activeSection: string }) {
           </motion.div>
 
           <div className="col-span-12 lg:col-span-5 flex flex-col gap-6">
-            
+
             {/* Financial Commitments */}
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.4 }}
               className="bg-background rounded-xl border border-border p-4 flex flex-col"
             >
@@ -803,7 +1064,7 @@ function MainWorkspace({ activeSection }: { activeSection: string }) {
                 <span className="text-sm font-semibold font-display text-foreground">Financial Load</span>
                 <span className="text-sm font-semibold font-body text-foreground">₹24,500</span>
               </div>
-              
+
               <div className="h-20 w-full mt-2 relative">
                 <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="w-full h-full">
                   <path d="M0,35 Q25,30 50,20 T100,5" fill="none" className="stroke-accent stroke-2" />
@@ -816,7 +1077,7 @@ function MainWorkspace({ activeSection }: { activeSection: string }) {
 
             {/* Documents & Brief preview */}
             <div className="grid grid-cols-2 gap-4">
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.5 }}
                 className="bg-background rounded-xl border border-border p-3"
               >
@@ -827,7 +1088,7 @@ function MainWorkspace({ activeSection }: { activeSection: string }) {
                 </div>
               </motion.div>
 
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.6 }}
                 className="rounded-xl p-3 bg-accent/5 border border-accent/20"
               >
@@ -847,9 +1108,11 @@ function MainWorkspace({ activeSection }: { activeSection: string }) {
 }
 
 function ContextPanel() {
+  const { userProfile } = useAuth();
+  const userName = userProfile?.full_name?.split(' ')[0] || 'User';
+
   const [messages, setMessages] = useState([
-    { id: 1, text: "Hi Yash, I've consolidated your day. Your AMEX bill is the highest priority before 5 PM.", sender: 'bot', timestamp: new Date() },
-    { id: 2, text: "Shall I prepare the rent transfer for Friday?", sender: 'bot', timestamp: new Date() }
+    { id: 1, text: `Hi ${userName}! I'm your Chief of Staff. How can I assist you today?`, sender: 'bot', timestamp: new Date() }
   ]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -860,27 +1123,7 @@ function ContextPanel() {
     "Remind me later"
   ];
 
-  const botResponses = {
-    "what's urgent today?": "Your AMEX bill is due today, and you have 2 subscription renewals this week. The rent payment is scheduled for Friday.",
-    "handle all bills": "I'll prepare the AMEX payment and schedule the rent transfer. Would you like me to proceed with the payments?",
-    "remind me later": "I'll remind you about your financial commitments in 2 hours. Is there anything specific you'd like me to handle in the meantime?",
-    "pay bills": "I'll initiate the payment process for your AMEX bill. The amount is ₹12,500. Should I proceed?",
-    "schedule payment": "I can schedule the rent payment for Friday. The amount is ₹8,000. Would you like me to set this up?",
-    "financial summary": "Here's your financial overview: Bills due this month: ₹23,300, Subscriptions: ₹4,267, Total: ₹27,567.",
-    "help": "I can help you with: paying bills, managing subscriptions, scheduling payments, financial summaries, or answering questions about your commitments."
-  };
-
-  const getBotResponse = (userMessage) => {
-    const message = userMessage.toLowerCase();
-    for (const [key, response] of Object.entries(botResponses)) {
-      if (message.includes(key)) {
-        return response;
-      }
-    }
-    return "I'm here to help with your financial commitments. You can ask me about bills, payments, subscriptions, or say 'help' for more options.";
-  };
-
-  const handleSendMessage = (text) => {
+  const handleSendMessage = async (text: string) => {
     if (!text.trim()) return;
 
     const userMessage = {
@@ -890,20 +1133,39 @@ function ContextPanel() {
       timestamp: new Date()
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    const newMessages = [...messages, userMessage];
+    setMessages(newMessages);
     setInputValue('');
     setIsTyping(true);
 
-    setTimeout(() => {
-      const botResponse = {
-        id: messages.length + 2,
-        text: getBotResponse(text),
+    try {
+      const apiMessages: ChatMessage[] = [
+        { role: 'system', content: `You are the Chief of Staff for Nexora. You help ${userName} manage their day, track commitments, and prioritize emails. Be concise, professional, and helpful.` },
+        ...newMessages.map(m => ({
+          role: (m.sender === 'bot' ? 'model' : 'user') as ChatMessage['role'],
+          content: m.text
+        }))
+      ];
+      
+      const responseText = await generateChatResponse(apiMessages);
+      
+      setMessages(prev => [...prev, {
+        id: prev.length + 1,
+        text: responseText,
         sender: 'bot',
         timestamp: new Date()
-      };
-      setMessages(prev => [...prev, botResponse]);
+      }]);
+    } catch (error) {
+      console.error(error);
+      setMessages(prev => [...prev, {
+        id: prev.length + 1,
+        text: "I'm having trouble connecting to my brain right now. Please check your API key.",
+        sender: 'bot',
+        timestamp: new Date()
+      }]);
+    } finally {
       setIsTyping(false);
-    }, 1000 + Math.random() * 1000);
+    }
   };
 
   const handleQuickResponse = (response) => {
@@ -922,7 +1184,7 @@ function ContextPanel() {
       <div className="text-[0.75rem] text-muted-foreground uppercase tracking-widest mb-5 font-body">
         Chief of Staff
       </div>
-      
+
       <div className="flex flex-col h-full">
         {/* Messages Container */}
         <div className="flex-1 overflow-y-auto mb-4 space-y-3">
@@ -931,11 +1193,10 @@ function ContextPanel() {
               key={message.id}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className={`text-[0.8125rem] p-3 rounded-[12px] leading-snug max-w-[85%] font-body ${
-                message.sender === 'bot'
-                  ? 'bg-secondary text-foreground rounded-bl-[0] mr-auto'
-                  : 'bg-primary text-primary-foreground rounded-br-[0] ml-auto'
-              }`}
+              className={`text-[0.8125rem] p-3 rounded-[12px] leading-snug max-w-[85%] font-body ${message.sender === 'bot'
+                ? 'bg-secondary text-foreground rounded-bl-[0] mr-auto'
+                : 'bg-primary text-primary-foreground rounded-br-[0] ml-auto'
+                }`}
             >
               {message.text}
             </motion.div>
@@ -1001,7 +1262,7 @@ export default function Dashboard() {
 
   return (
     <div className="h-screen flex flex-col bg-background overflow-hidden text-foreground antialiased selection:bg-secondary selection:text-foreground font-body">
-      <TopNav />
+      <TopNav setActiveSection={setActiveSection} />
       <div className="flex-1 flex overflow-hidden relative">
         <Sidebar activeSection={activeSection} setActiveSection={setActiveSection} />
         <MainWorkspace activeSection={activeSection} />

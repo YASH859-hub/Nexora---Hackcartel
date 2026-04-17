@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&display=swap');
+
 @import "tailwindcss";
 
 @theme {
@@ -15,8 +15,8 @@
   --color-border: hsl(var(--border));
   --color-ring: hsl(var(--ring));
 
-  --font-display: 'Instrument Serif', serif;
-  --font-body: 'Inter', sans-serif;
+  --font-display: 'Times New Roman', Times, serif;
+  --font-body: 'Times New Roman', Times, serif;
   --shadow-dashboard: 0 25px 80px -12px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.06);
 }
 
@@ -35,6 +35,21 @@
     --border: 0 0% 90%;
     --ring: 239 84% 67%;
     --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 210 14% 8%;
+    --foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 210 14% 17%;
+    --secondary: 210 14% 12%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 210 14% 12%;
+    --muted-foreground: 184 5% 65%;
+    --accent: 239 84% 67%;
+    --accent-foreground: 0 0% 100%;
+    --border: 210 14% 16%;
+    --ring: 239 84% 67%;
   }
 
   html {
