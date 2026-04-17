@@ -64,7 +64,7 @@ function loadGoogleIdentityScript(): Promise<void> {
 export async function requestGmailAccessToken(): Promise<string> {
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
   if (!clientId) {
-    throw new Error('Missing VITE_GOOGLE_CLIENT_ID in your .env.local file.');
+    throw new Error('Gmail integration requires a Google OAuth Client ID. Add VITE_GOOGLE_CLIENT_ID to your .env.local file (get one from Google Cloud Console → APIs & Services → Credentials).');
   }
 
   await loadGoogleIdentityScript();
