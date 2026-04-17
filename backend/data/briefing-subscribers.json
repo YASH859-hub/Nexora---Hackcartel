@@ -1,0 +1,15 @@
+{
+  "subscribers": [
+    {
+      "id": "default-user-001",
+      "displayName": "Yash",
+      "phoneE164": "+918767604204",
+      "tasks": [
+        "Review Nexora dashboard updates",
+        "Test WhatsApp OTP integration",
+        "Complete hackathon submission"
+      ],
+      "updatedAt": "2026-04-18T02:45:00.000Z"
+    }
+  ]
+}
