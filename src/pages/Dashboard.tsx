@@ -1,14 +1,26 @@
 import { motion } from 'motion/react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Search, Bell, User, LayoutDashboard, CheckSquare, Calendar, 
   FileText, Zap, Mail, Settings, CheckCircle2, ChevronRight, 
   CreditCard, RefreshCw, Home, Clock, Send, Sparkles, ArrowRight,
-  Command, AlertCircle
+  Command, AlertCircle, LogOut
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import React, { useState } from 'react';
+import { useAuth } from '../lib/AuthContext';
 
 function TopNav() {
+  const navigate = useNavigate();
+  const { user, userProfile, signOut } = useAuth();
+  const [showProfile, setShowProfile] = useState(false);
+
+  const handleLogout = async () => {
+    await signOut();
+    setShowProfile(false);
+    navigate('/');
+  };
+
   return (
     <header className="h-[64px] min-h-[64px] flex items-center justify-between px-6 border-b border-border bg-card z-10 shrink-0">
       <div className="flex items-center gap-2 w-[220px]">
@@ -40,9 +52,53 @@ function TopNav() {
           <Bell className="w-4 h-4" />
           <span className="absolute top-2 right-2 w-1.5 h-1.5 bg-destructive rounded-full border border-background"></span>
         </button>
-        <button className="w-8 h-8 rounded-full bg-border overflow-hidden border border-border/50 hover:ring-2 hover:ring-border transition-all">
-          <img src="https://picsum.photos/seed/yash/100/100" alt="Yash avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-        </button>
+        
+        <div className="relative">
+          <button 
+            onClick={() => setShowProfile(!showProfile)}
+            className="w-8 h-8 rounded-full bg-border overflow-hidden border border-border/50 hover:ring-2 hover:ring-border transition-all flex-shrink-0"
+          >
+            <img src="https://picsum.photos/seed/yash/100/100" alt="Profile avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+          </button>
+          
+          {showProfile && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="absolute top-full right-0 mt-2 bg-card rounded-lg border border-border shadow-lg p-4 w-64 z-50"
+            >
+              <div className="flex items-center gap-3 mb-4 pb-4 border-b border-border">
+                <img src="https://picsum.photos/seed/yash/100/100" alt="Profile" className="w-10 h-10 rounded-full" referrerPolicy="no-referrer" />
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-sm truncate">{userProfile?.full_name || 'User'}</div>
+                  <div className="text-xs text-muted-foreground truncate">{user?.email}</div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <button className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
+                  <User className="w-4 h-4" />
+                  Edit Profile
+                </button>
+                <button className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
+                  <Settings className="w-4 h-4" />
+                  Settings
+                </button>
+              </div>
+
+              <div className="mt-4 pt-4 border-t border-border">
+                <button
+                  onClick={handleLogout}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm bg-destructive/10 hover:bg-destructive/20 text-destructive transition-colors font-medium"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Sign Out
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </div>
       </div>
     </header>
   );
