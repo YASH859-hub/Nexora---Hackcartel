@@ -1,6 +1,6 @@
 import { motion } from 'motion/react';
 import { Link } from 'react-router-dom';
-import { Play, CheckCircle2, Sparkles, TrendingUp, Calendar, Zap } from 'lucide-react';
+import { Play, CheckCircle2, Sparkles, TrendingUp, Calendar, Zap, FolderOpen } from 'lucide-react';
 
 export default function Features() {
   const features = [
@@ -21,6 +21,12 @@ export default function Features() {
       description: 'Extract payments and subscriptions from email automatically using AI. Zero manual entry.',
       icon: Sparkles,
       benefits: ['AI extraction', 'Auto-parsing', 'Instant updates'],
+    },
+    {
+      title: 'Document Vault + Autofill',
+      description: 'Upload identity and proof documents once, then reuse them to fill forms automatically with profile-aware mapping.',
+      icon: FolderOpen,
+      benefits: ['Digital storage', 'Field detection', 'One-click form fill'],
     },
     {
       title: 'Daily Briefings',

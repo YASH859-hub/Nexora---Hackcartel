@@ -1,17 +1,17 @@
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Search, Bell, User, LayoutDashboard, CheckSquare, Calendar,
+  Search, Bell, User, LayoutDashboard, CheckSquare, Calendar, 
   FileText, Zap, Mail, Settings, CheckCircle2, ChevronRight,
   CreditCard, RefreshCw, Home, Clock, Send, Sparkles, ArrowRight,
-  Command, AlertCircle, LogOut, TrendingUp, AlertTriangle, Activity
+  Command, AlertCircle, LogOut, TrendingUp, AlertTriangle, Activity, MessageCircle
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../lib/AuthContext';
 import { supabase } from '../lib/supabase';
 import {
-  extractActionItems,
+  extractActionItems, 
   extractCalendarActionItems,
   createCalendarActionItem,
   fetchRecentEmails,
@@ -24,6 +24,8 @@ import {
 } from '../lib/gmail';
 import { generateChatResponse, type ChatMessage } from '../lib/chat';
 import { useTheme } from '../lib/ThemeContext';
+import Documents from './Documents';
+import Automations from './Automations';
 
 function AnimatedStatusTicker() {
   const [index, setIndex] = useState(0);
@@ -443,8 +445,8 @@ function Sidebar({ activeSection, setActiveSection }: { activeSection: string, s
           <NavItem icon={CreditCard} label="Commitments" active={activeSection === 'commitments'} onClick={() => setActiveSection('commitments')} />
           <NavItem icon={Calendar} label="Event Priority" active={activeSection === 'events'} onClick={() => setActiveSection('events')} />
           <NavItem icon={CheckSquare} label="Tasks" active={activeSection === 'tasks'} onClick={() => setActiveSection('tasks')} />
-          <NavItem icon={FileText} label="Documents" />
-          <NavItem icon={Zap} label="Automations" />
+          <NavItem icon={FileText} label="Documents" active={activeSection === 'documents'} onClick={() => setActiveSection('documents')} />
+          <NavItem icon={Zap} label="Automations" active={activeSection === 'automations'} onClick={() => setActiveSection('automations')} />
         </div>
 
         <div className="flex flex-col gap-1">
@@ -460,6 +462,13 @@ function Sidebar({ activeSection, setActiveSection }: { activeSection: string, s
             <div className="flex items-center gap-3">
               <Calendar className="w-4 h-4" />
               <span>Calendar</span>
+            </div>
+            <span className="text-xs text-accent">✓</span>
+          </button>
+          <button className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm text-muted-foreground hover:bg-secondary hover:text-foreground transition-all group font-body">
+            <div className="flex items-center gap-3">
+              <MessageCircle className="w-4 h-4" />
+              <span>WhatsApp</span>
             </div>
             <span className="text-xs text-accent">✓</span>
           </button>
@@ -1189,12 +1198,26 @@ function TasksDashboard() {
   );
 }
 
-function ActionPill({ label }: { label: string }) {
+function ActionPill({
+  label,
+  active = false,
+  onClick,
+}: {
+  label: string;
+  active?: boolean;
+  onClick?: () => void;
+}) {
   return (
     <motion.button
+      type="button"
+      onClick={onClick}
       whileHover={{ scale: 1.02, y: -1 }}
       whileTap={{ scale: 0.98 }}
-      className="px-[14px] py-[6px] rounded-full bg-background border border-border text-[0.75rem] font-medium text-foreground hover:bg-secondary hover:shadow-sm transition-all focus:outline-none focus:ring-1 focus:ring-accent/50 font-body"
+      className={`px-[14px] py-[6px] rounded-full border text-[0.75rem] font-medium transition-all focus:outline-none focus:ring-1 focus:ring-accent/50 font-body ${
+        active
+          ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+          : 'bg-background border-border text-foreground hover:bg-secondary hover:shadow-sm'
+      }`}
     >
       {label}
     </motion.button>
@@ -1547,6 +1570,156 @@ function SettingsDashboard() {
 
 function MainWorkspace({ activeSection }: { activeSection: string }) {
   const { userProfile } = useAuth();
+  const [activeOverviewAction, setActiveOverviewAction] = useState<'pay' | 'snooze' | null>(null);
+  const [overviewSummary, setOverviewSummary] = useState('');
+  const [isSummarizing, setIsSummarizing] = useState(false);
+  const [summaryError, setSummaryError] = useState('');
+  const { priorityItems: injectedPriorityItems, manualCommitments: injectedManualCommitments } = useInjectedDashboardData();
+
+  const persistedState = loadEventPriorityState();
+  const mergedOverviewActionItems = mergeActionItems(persistedState.actionItems, injectedPriorityItems);
+  const mergedOverviewCommitments = mergeCommitments(loadManualFinancialCommitments(), injectedManualCommitments);
+
+  const payOptions = [
+    ...mergedOverviewActionItems
+      .filter((item) => item.category === 'financial')
+      .map((item) => ({
+        id: `pay-action-${item.sourceEmailId || item.title}`,
+        title: item.title,
+        subtitle: item.dueDate ? `Due ${item.dueDate}` : 'No due date',
+        detail: item.nextAction,
+      })),
+    ...mergedOverviewCommitments.map((item) => ({
+      id: `pay-commitment-${item.id}`,
+      title: item.name,
+      subtitle: `Due ${item.dueDate}`,
+      detail: `₹${item.amount.toLocaleString('en-IN')}${item.note ? ` • ${item.note}` : ''}`,
+    })),
+  ];
+
+  const snoozeOptions = mergedOverviewActionItems
+    .filter((item) => item.category !== 'financial')
+    .map((item) => ({
+      id: `snooze-${item.sourceEmailId || item.title}`,
+      title: item.title,
+      subtitle: item.dueDate ? `Scheduled ${item.dueDate}` : 'No schedule',
+      detail: item.nextAction,
+    }));
+
+  const formatOverviewDate = (value?: string | null) => {
+    if (!value) {
+      return 'No due date';
+    }
+
+    const parsed = Date.parse(value);
+    if (Number.isNaN(parsed)) {
+      return value;
+    }
+
+    return new Date(parsed).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+
+  const timelineItems = [
+    ...mergedOverviewActionItems.map((item) => ({
+      id: `timeline-action-${item.sourceEmailId || item.title}`,
+      date: item.dueDate || '',
+      label: item.title,
+      source: item.sourceType === 'calendar' ? 'Calendar' : item.category === 'financial' ? 'Finance' : 'Inbox',
+      priority: item.priority,
+    })),
+    ...mergedOverviewCommitments.map((item) => ({
+      id: `timeline-commitment-${item.id}`,
+      date: item.dueDate,
+      label: item.name,
+      source: 'Commitment',
+      priority: item.priority,
+    })),
+  ]
+    .sort((a, b) => {
+      const aTime = a.date ? Date.parse(a.date) : Number.MAX_SAFE_INTEGER;
+      const bTime = b.date ? Date.parse(b.date) : Number.MAX_SAFE_INTEGER;
+      return aTime - bTime;
+    })
+    .slice(0, 6);
+
+  const overviewHighlights = timelineItems.slice(0, 5).map((item) => `${item.label} (${item.source})`);
+  const highPriorityCount = mergedOverviewActionItems.filter((item) => item.priority === 'high').length;
+  const financialItemCount = mergedOverviewActionItems.filter((item) => item.category === 'financial').length;
+  const financialCommitmentTotal = mergedOverviewCommitments.reduce((sum, item) => sum + (Number.isFinite(item.amount) ? item.amount : 0), 0);
+
+  const amountByPriority = mergedOverviewCommitments.reduce(
+    (accumulator, item) => {
+      accumulator[item.priority] += Number.isFinite(item.amount) ? item.amount : 0;
+      return accumulator;
+    },
+    { high: 0, medium: 0, low: 0 },
+  );
+
+  const maxPriorityAmount = Math.max(amountByPriority.high, amountByPriority.medium, amountByPriority.low, 1);
+  const buildFallbackOverviewSummary = () => {
+    const highPriorityCount = mergedOverviewActionItems.filter((item) => item.priority === 'high').length;
+    const financialCount = mergedOverviewActionItems.filter((item) => item.category === 'financial').length;
+    const totalDueValue = mergedOverviewCommitments.reduce((sum, item) => sum + (Number.isFinite(item.amount) ? item.amount : 0), 0);
+    const nextPriorityItems = mergedOverviewActionItems
+      .slice(0, 3)
+      .map((item) => item.title)
+      .join(', ');
+
+    return [
+      `Snapshot: ${mergedOverviewActionItems.length} tracked items and ${mergedOverviewCommitments.length} commitments are active today.`,
+      `Priorities: ${highPriorityCount} high-priority tasks, ${financialCount} finance-related items, and total due value of ₹${totalDueValue.toLocaleString('en-IN')}.`,
+      `Next steps: Focus on ${nextPriorityItems || 'the earliest due items'} and complete critical payments first.`,
+      'Note: Showing offline summary because AI response is currently unavailable.',
+    ].join('\n');
+  };
+
+  const summarizeOverview = async () => {
+    setIsSummarizing(true);
+    setSummaryError('');
+
+    try {
+      const summaryPayload = {
+        userName: userProfile?.full_name || 'User',
+        priorityItems: mergedOverviewActionItems.slice(0, 12).map((item) => ({
+          title: item.title,
+          category: item.category,
+          priority: item.priority,
+          dueDate: item.dueDate || null,
+          nextAction: item.nextAction,
+        })),
+        commitments: mergedOverviewCommitments.slice(0, 10).map((item) => ({
+          name: item.name,
+          amount: item.amount,
+          dueDate: item.dueDate,
+          priority: item.priority,
+          note: item.note || null,
+        })),
+      };
+
+      const summary = await generateChatResponse([
+        {
+          role: 'system',
+          content: 'You are Nexora overview assistant. Produce a concise operational summary in plain text with exactly three titled lines: Snapshot, Priorities, Next steps. Keep total response under 120 words and do not use markdown formatting.',
+        },
+        {
+          role: 'user',
+          content: `Summarize this dashboard state for the user. Data: ${JSON.stringify(summaryPayload)}`,
+        },
+      ]);
+
+      setOverviewSummary(summary.trim());
+    } catch (error) {
+      const fallbackSummary = buildFallbackOverviewSummary();
+      setOverviewSummary(fallbackSummary);
+      setSummaryError('');
+      console.error('LLM summary failed, using fallback summary.', error);
+    } finally {
+      setIsSummarizing(false);
+    }
+  };
 
   if (activeSection === 'profile') {
     return <ProfileDashboard />;
@@ -1568,6 +1741,14 @@ function MainWorkspace({ activeSection }: { activeSection: string }) {
     return <TasksDashboard />;
   }
 
+  if (activeSection === 'documents') {
+    return <Documents />;
+  }
+
+  if (activeSection === 'automations') {
+    return <Automations />;
+  }
+
   return (
     <main className="flex-1 overflow-y-auto px-8 py-8 relative scrollbar-hide">
       <div className="max-w-4xl mx-auto flex flex-col gap-12">
@@ -1586,50 +1767,105 @@ function MainWorkspace({ activeSection }: { activeSection: string }) {
           >
             <div>
               <h1 className="text-2xl font-display font-semibold text-foreground mb-3">
-                You have <span className="text-accent pr-1">5 things</span> that need attention today.
+                You have <span className="text-accent pr-1">{mergedOverviewActionItems.length || 0} things</span> that need attention today.
               </h1>
 
               <ul className="text-sm text-muted-foreground w-max grid grid-cols-2 gap-x-6 gap-y-2 font-body">
-                <li className="flex items-center gap-2">
-                  <span className="text-accent font-bold leading-none">•</span>
-                  <span>Credit card bill due tomorrow</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <span className="text-accent font-bold leading-none">•</span>
-                  <span>2 subscriptions renewing this week</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <span className="text-accent font-bold leading-none">•</span>
-                  <span>Rent scheduled for Friday</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <span className="text-accent font-bold leading-none">•</span>
-                  <span>Form submission pending</span>
-                </li>
-                <li className="flex items-center gap-2">
-                  <span className="text-accent font-bold leading-none">•</span>
-                  <span>Passport expires in 30 days</span>
-                </li>
+                {overviewHighlights.length > 0 ? (
+                  overviewHighlights.map((highlight) => (
+                    <li key={highlight} className="flex items-center gap-2">
+                      <span className="text-accent font-bold leading-none">•</span>
+                      <span>{highlight}</span>
+                    </li>
+                  ))
+                ) : (
+                  <li className="flex items-center gap-2">
+                    <span className="text-accent font-bold leading-none">•</span>
+                    <span>No active highlights yet. Connect inbox and calendar to populate this panel.</span>
+                  </li>
+                )}
               </ul>
             </div>
 
-            <button className="h-10 px-5 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:opacity-90 transition-all outline-none font-body">
-              Handle Everything
+            <button
+              onClick={summarizeOverview}
+              disabled={isSummarizing}
+              className="h-10 px-5 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:opacity-90 transition-all outline-none font-body disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {isSummarizing ? 'Summarising...' : 'Summarise'}
             </button>
           </motion.div>
+
+          {(overviewSummary || summaryError) && (
+            <motion.div
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={`p-4 rounded-xl border text-sm whitespace-pre-line ${
+                summaryError
+                  ? 'border-destructive/30 bg-destructive/10 text-destructive'
+                  : 'border-border bg-card text-foreground'
+              }`}
+            >
+              {summaryError || overviewSummary}
+            </motion.div>
+          )}
         </section>
 
         {/* Action Strip */}
         <motion.section
           initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.2 }}
-          className="flex flex-wrap items-center gap-3"
+          className="flex flex-col gap-4"
         >
-          <ActionPill label="Pay" />
-          <ActionPill label="Schedule" />
-          <ActionPill label="Snooze" />
-          <ActionPill label="Autofill Form" />
-          <ActionPill label="View Source" />
-          <ActionPill label="Customize" />
+          <div className="flex flex-wrap items-center gap-3">
+            <ActionPill
+              label="Pay"
+              active={activeOverviewAction === 'pay'}
+              onClick={() => setActiveOverviewAction((prev) => (prev === 'pay' ? null : 'pay'))}
+            />
+            <ActionPill
+              label="Snooze"
+              active={activeOverviewAction === 'snooze'}
+              onClick={() => setActiveOverviewAction((prev) => (prev === 'snooze' ? null : 'snooze'))}
+            />
+          </div>
+
+          {activeOverviewAction === 'pay' && (
+            <div className="rounded-xl border border-border bg-card p-4">
+              <div className="text-sm font-semibold font-display text-foreground mb-3">To Be Paid</div>
+              {payOptions.length === 0 ? (
+                <div className="text-sm text-muted-foreground font-body">No payable items found in your stored data.</div>
+              ) : (
+                <div className="space-y-2">
+                  {payOptions.slice(0, 8).map((item) => (
+                    <div key={item.id} className="p-3 rounded-lg border border-border bg-background/70">
+                      <div className="text-sm font-medium text-foreground font-body">{item.title}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5 font-body">{item.subtitle}</div>
+                      <div className="text-xs text-muted-foreground mt-1 font-body">{item.detail}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeOverviewAction === 'snooze' && (
+            <div className="rounded-xl border border-border bg-card p-4">
+              <div className="text-sm font-semibold font-display text-foreground mb-3">Snooze Suggestions</div>
+              {snoozeOptions.length === 0 ? (
+                <div className="text-sm text-muted-foreground font-body">No snoozable non-financial items found in stored data.</div>
+              ) : (
+                <div className="space-y-2">
+                  {snoozeOptions.slice(0, 8).map((item) => (
+                    <div key={item.id} className="p-3 rounded-lg border border-border bg-background/70">
+                      <div className="text-sm font-medium text-foreground font-body">{item.title}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5 font-body">{item.subtitle}</div>
+                      <div className="text-xs text-muted-foreground mt-1 font-body">{item.detail}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </motion.section>
 
         {/* Grid Modules */}
@@ -1650,30 +1886,22 @@ function MainWorkspace({ activeSection }: { activeSection: string }) {
             </div>
 
             <div className="flex flex-col gap-3">
-
-              <div className="grid grid-cols-[100px_1fr_80px] items-center text-[0.8125rem] pb-2 border-b border-border font-body">
-                <span className="text-muted-foreground">June 14</span>
-                <span className="flex items-center gap-2 font-medium text-foreground"><div className="w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_8px_rgba(239,68,68,0.4)]" /> AMEX Gold Bill</span>
-                <span className="text-right text-muted-foreground">Gmail</span>
-              </div>
-
-              <div className="grid grid-cols-[100px_1fr_80px] items-center text-[0.8125rem] pb-2 border-b border-border font-body">
-                <span className="text-muted-foreground">June 16</span>
-                <span className="flex items-center gap-2 font-medium text-foreground"><div className="w-1.5 h-1.5 rounded-full bg-[#F59E0B]" /> Netflix Renewal</span>
-                <span className="text-right text-muted-foreground">Auto</span>
-              </div>
-
-              <div className="grid grid-cols-[100px_1fr_80px] items-center text-[0.8125rem] pb-2 border-b border-border font-body">
-                <span className="text-muted-foreground">June 18</span>
-                <span className="flex items-center gap-2 font-medium text-foreground"><div className="w-1.5 h-1.5 rounded-full bg-[#F59E0B]" /> Rent Payment</span>
-                <span className="text-right text-muted-foreground">Bank</span>
-              </div>
-
-              <div className="grid grid-cols-[100px_1fr_80px] items-center text-[0.8125rem] pb-2 border-b border-border font-body">
-                <span className="text-muted-foreground">June 12</span>
-                <span className="flex items-center gap-2 font-medium text-foreground opacity-50"><div className="w-1.5 h-1.5 rounded-full bg-[#10B981]" /> Gym Session</span>
-                <span className="text-right text-muted-foreground opacity-50">Cal</span>
-              </div>
+              {timelineItems.length > 0 ? (
+                timelineItems.map((item) => (
+                  <div key={item.id} className="grid grid-cols-[100px_1fr_90px] items-center text-[0.8125rem] pb-2 border-b border-border font-body">
+                    <span className="text-muted-foreground">{formatOverviewDate(item.date)}</span>
+                    <span className="flex items-center gap-2 font-medium text-foreground">
+                      <div className={`w-1.5 h-1.5 rounded-full ${item.priority === 'high' ? 'bg-accent shadow-[0_0_8px_rgba(239,68,68,0.4)]' : item.priority === 'medium' ? 'bg-[#F59E0B]' : 'bg-[#10B981]'}`} />
+                      {item.label}
+                    </span>
+                    <span className="text-right text-muted-foreground">{item.source}</span>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground font-body">
+                  Timeline will appear here when your events and commitments are available.
+                </div>
+              )}
 
             </div>
           </motion.div>
@@ -1687,42 +1915,30 @@ function MainWorkspace({ activeSection }: { activeSection: string }) {
             >
               <div className="flex justify-between items-center mb-4">
                 <span className="text-sm font-semibold font-display text-foreground">Financial Load</span>
-                <span className="text-sm font-semibold font-body text-foreground">₹24,500</span>
+                <span className="text-sm font-semibold font-body text-foreground">₹{financialCommitmentTotal.toLocaleString('en-IN')}</span>
               </div>
 
-              <div className="h-20 w-full mt-2 relative">
-                <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="w-full h-full">
-                  <path d="M0,35 Q25,30 50,20 T100,5" fill="none" className="stroke-accent stroke-2" />
-                </svg>
+              <div className="mt-2 flex flex-col gap-2">
+                {([
+                  { key: 'high', label: 'High priority', amount: amountByPriority.high, color: 'bg-red-500/70' },
+                  { key: 'medium', label: 'Medium priority', amount: amountByPriority.medium, color: 'bg-amber-500/70' },
+                  { key: 'low', label: 'Low priority', amount: amountByPriority.low, color: 'bg-emerald-500/70' },
+                ] as const).map((bar) => (
+                  <div key={bar.key} className="space-y-1">
+                    <div className="flex items-center justify-between text-[0.7rem] text-muted-foreground font-body">
+                      <span>{bar.label}</span>
+                      <span>₹{bar.amount.toLocaleString('en-IN')}</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-secondary overflow-hidden">
+                      <div className={`h-full ${bar.color}`} style={{ width: `${Math.max((bar.amount / maxPriorityAmount) * 100, bar.amount > 0 ? 8 : 0)}%` }} />
+                    </div>
+                  </div>
+                ))}
               </div>
               <div className="text-[0.7rem] text-muted-foreground mt-2 font-body">
-                Projected total for this week
+                {highPriorityCount} high-priority items • {financialItemCount} finance signals detected
               </div>
             </motion.div>
-
-            {/* Documents & Brief preview */}
-            <div className="grid grid-cols-2 gap-4">
-              <motion.div
-                initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.5 }}
-                className="bg-background rounded-xl border border-border p-3"
-              >
-                <div className="text-sm font-semibold mb-3 font-display text-foreground">Things you'll need soon</div>
-                <div className="flex gap-2">
-                  <div className="px-3 py-1.5 rounded-full bg-secondary text-xs font-medium border border-border font-body">📄 Passport</div>
-                  <div className="px-3 py-1.5 rounded-full bg-secondary text-xs font-medium border border-border font-body">📄 Insurance</div>
-                </div>
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.6 }}
-                className="rounded-xl p-3 bg-accent/5 border border-accent/20"
-              >
-                <div className="text-[0.75rem] text-accent font-semibold mb-1 font-body">📬 WhatsApp Brief sent</div>
-                <div className="text-[0.7rem] text-accent/80 leading-snug font-body">
-                  Good morning ☀️ • 1 bill due tomorrow • 2 renewals this week.
-                </div>
-              </motion.div>
-            </div>
 
           </div>
 
@@ -1735,6 +1951,7 @@ function MainWorkspace({ activeSection }: { activeSection: string }) {
 function ContextPanel() {
   const { userProfile } = useAuth();
   const userName = userProfile?.full_name?.split(' ')[0] || 'User';
+  const hasGeminiKey = Boolean(import.meta.env.VITE_GEMINI_API_KEY);
 
   const [messages, setMessages] = useState([
     { id: 1, text: `Hi ${userName}! I'm your Chief of Staff. How can I assist you today?`, sender: 'bot', timestamp: new Date() }
@@ -1764,6 +1981,10 @@ function ContextPanel() {
     setIsTyping(true);
 
     try {
+      if (!hasGeminiKey) {
+        throw new Error('Missing VITE_GEMINI_API_KEY in environment variables.');
+      }
+
       const apiMessages: ChatMessage[] = [
         { role: 'system', content: `You are the Chief of Staff for Nexora. You help ${userName} manage their day, track commitments, and prioritize emails. Be concise, professional, and helpful.` },
         ...newMessages.map(m => ({
@@ -1807,7 +2028,7 @@ function ContextPanel() {
   return (
     <aside className="w-[280px] flex-shrink-0 border-l border-border bg-background flex flex-col h-full p-6">
       <div className="text-[0.75rem] text-muted-foreground uppercase tracking-widest mb-5 font-body">
-        Chief of Staff
+        Chief of Staff {hasGeminiKey ? '• LLM enabled' : '• LLM unavailable'}
       </div>
 
       <div className="flex flex-col h-full">

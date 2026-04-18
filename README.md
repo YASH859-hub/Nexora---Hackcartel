@@ -1,150 +1,164 @@
+
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
 # Nexora
 
-Nexora is a React + TypeScript web app for managing personal commitments like bills and subscriptions, with authentication and data storage powered by Supabase.
+Nexora is an AI-assisted personal operations workspace built with React and TypeScript. It helps users track commitments, monitor event priorities, store important documents, and run automations such as Google Form prefill generation using profile and vault data.
 
-## What This Project Includes
+## Core Capabilities
 
-- Landing page with product messaging and entry point to auth
-- Email/password authentication (sign up, sign in, sign out)
-- Protected dashboard routes based on auth state
-- Supabase-backed user profiles, bills, and subscriptions data model
-- React hooks for bills and subscriptions CRUD flows
+- Secure authentication and profile management via Supabase Auth.
+- Commitment management for bills, subscriptions, and manual financial obligations.
+- Event Priority intelligence by combining Gmail and Calendar signals.
+- AI-assisted Overview summary generation from current dashboard state.
+- Document Vault for storing reusable identity and supporting records.
+- Automations workspace for generating genuine Google Form prefilled links.
+- WhatsApp integration surface for OTP and briefing workflows.
 
-## Tech Stack
+## Technology Stack
 
-- React 19
-- TypeScript
-- Vite 6
-- React Router
-- Supabase JS client
-- Tailwind CSS 4
-- Lucide icons and Motion animations
+- Frontend: React 19, TypeScript, Vite 6, React Router
+- UI: Tailwind CSS 4, Lucide icons, Motion animations
+- Data and Auth: Supabase (`@supabase/supabase-js`)
+- AI: Gemini API (`VITE_GEMINI_API_KEY`) for summaries and mapping
+- Backend services: Express + Twilio (WhatsApp/OTP and briefing routes)
 
-## Project Structure
+## Repository Structure
 
 ```text
 .
-|-- src
+|-- src/
 |   |-- App.tsx
-|   |-- pages
-|   |   |-- Hero.tsx
+|   |-- pages/
+|   |   |-- Dashboard.tsx
+|   |   |-- Documents.tsx
+|   |   |-- Automations.tsx
 |   |   |-- Auth.tsx
-|   |   `-- Dashboard.tsx
-|   `-- lib
-|       |-- supabase.ts
+|   |   `-- ...
+|   `-- lib/
 |       |-- AuthContext.tsx
-|       |-- database.ts
-|       |-- useBills.ts
-|       `-- useSubscriptions.ts
+|       |-- supabase.ts
+|       |-- chat.ts
+|       |-- gmail.ts
+|       |-- autofill.ts
+|       |-- documentVault.ts
+|       `-- ...
+|-- backend/
+|   |-- src/
+|   |   |-- server.ts
+|   |   |-- routes/
+|   |   `-- lib/
 |-- DATABASE_SETUP.sql
+|-- SUPABASE_DASHBOARD_SCHEMA.sql
 |-- SUPABASE_SETUP.md
 |-- USER_SETUP.md
-`-- .env.example
+|-- WHATSAPP_INTEGRATION_GUIDE.md
+`-- package.json
 ```
 
-## Prerequisites
+## Environment Variables
 
-- Node.js 18+
-- npm 9+
-- A Supabase project
-
-## Environment Setup
-
-Create a local environment file in the project root:
+Create `.env.local` in the project root and configure at least:
 
 ```env
 VITE_SUPABASE_URL=https://your-project-id.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
-DATABASE_URL=postgresql://postgres:your_password@db.your-project-id.supabase.co:5432/postgres
+VITE_GEMINI_API_KEY=your-gemini-api-key
 ```
 
-You can copy from `.env.example` and then update values.
+Optional backend and messaging variables are documented in:
 
-## Database Setup (Supabase)
-
-1. Open your Supabase project dashboard.
-2. Go to SQL Editor.
-3. Run the schema from `DATABASE_SETUP.sql`.
-4. Confirm tables and policies were created.
-
-Additional guides:
-
+- `WHATSAPP_INTEGRATION_GUIDE.md`
 - `SUPABASE_SETUP.md`
 - `USER_SETUP.md`
 
-## Run Locally
+## Database Setup
 
-1. Install dependencies:
+1. Open Supabase SQL Editor.
+2. Run `DATABASE_SETUP.sql`.
+3. Run `SUPABASE_DASHBOARD_SCHEMA.sql` if seeded dashboard artifacts are required.
+4. Verify tables, policies, and indexes were created.
+
+## Local Development
+
+Install dependencies:
 
 ```bash
 npm install
 ```
 
-2. Start development server:
+Run frontend:
 
 ```bash
 npm run dev
 ```
 
-3. Open the URL printed in the terminal (usually http://localhost:3000).
-
-## Available Scripts
-
-- `npm run dev` - Start Vite dev server
-- `npm run build` - Build production bundle
-- `npm run preview` - Preview production build locally
-- `npm run lint` - Type-check with TypeScript
-- `npm run clean` - Remove dist directory
-
-## Authentication and Routing
-
-- Public routes:
-   - `/` (landing page)
-   - `/auth` (sign in / sign up)
-- Protected route:
-   - `/dashboard` (requires authenticated user)
-
-Auth and session state are managed in `src/lib/AuthContext.tsx`.
-
-## Data Layer
-
-Main helpers and hooks:
-
-- `src/lib/database.ts` - generic Supabase helper methods
-- `src/lib/useBills.ts` - bills fetching and mutations
-- `src/lib/useSubscriptions.ts` - subscriptions fetching, mutations, and monthly cost calculation
-
-## Common Issues
-
-- Port already in use:
-   - Vite may auto-switch to the next port (for example 3001 or 3002).
-- Auth user created but profile missing:
-   - Ensure `DATABASE_SETUP.sql` was executed and `users` table exists.
-- Environment variables not picked up:
-   - Restart the dev server after editing `.env.local`.
-
-## Security Notes
-
-- Never commit `.env.local`.
-- Keep your Supabase keys private where required.
-- Verify Row Level Security policies before production deployment.
-
-## Deployment
-
-This app can be deployed to any static hosting platform that supports Vite build output.
-
-Build command:
+Build frontend:
 
 ```bash
 npm run build
 ```
 
-Preview build locally:
+Preview production build:
 
 ```bash
 npm run preview
 ```
 
+Type-check:
+
+```bash
+npm run lint
+```
+
+Backend (from repository root):
+
+```bash
+cd backend
+npm install
+npm run dev
+```
+
+## Product Workflows
+
+### Overview Summarise
+
+The Overview card includes a `Summarise` action that sends current commitments and priorities to the LLM and returns a concise operational summary.
+
+### Document Vault
+
+The Documents tab is dedicated to ingesting and storing reusable document metadata and extracted fields.
+
+### Automations (Google Forms)
+
+The Automations tab generates real Google Form prefilled URLs by combining:
+
+- User profile fields
+- Vault document fields
+- Explicit Google Form `entry.*` mappings
+
+Output links are ready to open or share.
+
+## Routing Model
+
+- Public: `/`, `/auth`, marketing pages
+- Protected: `/dashboard`
+- Dashboard sections: Overview, Commitments, Event Priority, Tasks, Documents, Automations, Settings
+
+## Security and Compliance Notes
+
+- Never commit `.env.local`.
+- Review Supabase RLS policies before production use.
+- Treat document vault content as sensitive personal data.
+- Restrict and rotate API keys used for AI and messaging providers.
+
+## Known Operational Notes
+
+- Vite may warn about chunk size during production build; this does not block successful builds.
+- If environment variables change, restart the dev server.
+
 ## License
 
-Add your preferred license here (MIT, Apache-2.0, proprietary, etc.).
+No license is currently declared. Add an explicit license before external distribution.

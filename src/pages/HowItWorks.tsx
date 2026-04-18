@@ -6,8 +6,8 @@ import { useState } from 'react';
 const steps = [
   {
     title: 'Connect your accounts',
-    description: 'Link your email, calendar, and payment sources to let Nexora discover subscriptions, bills, and events automatically. Your data stays encrypted and secure.',
-    details: 'We support Gmail, Outlook, Apple Calendar, and major payment networks. Integration takes less than 2 minutes.',
+    description: 'Link your email, calendar, payment sources, and document vault to let Nexora discover subscriptions, bills, events, and reusable identity data automatically. Your data stays encrypted and secure.',
+    details: 'We support Gmail, Outlook, Apple Calendar, and document uploads. Integration takes less than 2 minutes.',
     icon: Shield,
   },
   {
