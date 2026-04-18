@@ -147,16 +147,20 @@ export function createBriefingRouter(
           sub.phoneE164,
           text
         );
-        if (!r.ok) {
-          const status =
-            r.error.code === 'INVALID_NUMBER'
-              ? 400
-              : r.error.code === 'CONFIG_ERROR'
-                ? 500
-                : 502;
-          return res.status(status).json({ ok: false, error: r.error });
+        if (r.ok) {
+          return res.json({ ok: true, sid: r.sid });
         }
-        return res.json({ ok: true, sid: r.sid });
+
+        const deliveryError = 'error' in r
+          ? r.error
+          : { code: 'UNKNOWN', message: 'Unexpected delivery response' };
+        const status =
+          deliveryError.code === 'INVALID_NUMBER'
+            ? 400
+            : deliveryError.code === 'CONFIG_ERROR'
+              ? 500
+              : 502;
+        return res.status(status).json({ ok: false, error: deliveryError });
       }
 
       if (userName && typeof userName === 'string' && Array.isArray(tasks)) {
@@ -185,16 +189,20 @@ export function createBriefingRouter(
           recipient,
           text
         );
-        if (!r.ok) {
-          const status =
-            r.error.code === 'INVALID_NUMBER'
-              ? 400
-              : r.error.code === 'CONFIG_ERROR'
-                ? 500
-                : 502;
-          return res.status(status).json({ ok: false, error: r.error });
+        if (r.ok) {
+          return res.json({ ok: true, sid: r.sid });
         }
-        return res.json({ ok: true, sid: r.sid });
+
+        const deliveryError = 'error' in r
+          ? r.error
+          : { code: 'UNKNOWN', message: 'Unexpected delivery response' };
+        const status =
+          deliveryError.code === 'INVALID_NUMBER'
+            ? 400
+            : deliveryError.code === 'CONFIG_ERROR'
+              ? 500
+              : 502;
+        return res.status(status).json({ ok: false, error: deliveryError });
       }
 
       return res.status(400).json({
@@ -265,17 +273,20 @@ export function createLegacyWhatsAppRouter(
         text
       );
 
-      if (!r.ok) {
-        const status =
-          r.error.code === 'INVALID_NUMBER'
-            ? 400
-            : r.error.code === 'CONFIG_ERROR'
-              ? 500
-              : 502;
-        return res.status(status).json({ ok: false, error: r.error });
+      if (r.ok) {
+        return res.json({ ok: true, sid: r.sid });
       }
 
-      return res.json({ ok: true, sid: r.sid });
+      const deliveryError = 'error' in r
+        ? r.error
+        : { code: 'UNKNOWN', message: 'Unexpected delivery response' };
+      const status =
+        deliveryError.code === 'INVALID_NUMBER'
+          ? 400
+          : deliveryError.code === 'CONFIG_ERROR'
+            ? 500
+            : 502;
+      return res.status(status).json({ ok: false, error: deliveryError });
     } catch (e) {
       res.status(500).json({
         ok: false,

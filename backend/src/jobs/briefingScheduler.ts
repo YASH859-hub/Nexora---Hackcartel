@@ -51,17 +51,7 @@ export async function broadcastBriefingsToAllSubscribers(
   for (const sub of subs) {
     const body = formatBriefing(sub.displayName, sub.tasks);
     const r = await sendWhatsAppMessage(client, from, sub.phoneE164, body);
-    if (r.ok) {
-      console.log(
-        JSON.stringify({
-          level: 'info',
-          event: 'briefing_broadcast_sent',
-          trigger,
-          subscriberId: sub.id,
-          sid: r.sid,
-        })
-      );
-    } else {
+    if ('error' in r) {
       console.log(
         JSON.stringify({
           level: 'error',
@@ -71,7 +61,18 @@ export async function broadcastBriefingsToAllSubscribers(
           error: r.error,
         })
       );
+      continue;
     }
+
+    console.log(
+      JSON.stringify({
+        level: 'info',
+        event: 'briefing_broadcast_sent',
+        trigger,
+        subscriberId: sub.id,
+        sid: r.sid,
+      })
+    );
   }
 
   console.log(

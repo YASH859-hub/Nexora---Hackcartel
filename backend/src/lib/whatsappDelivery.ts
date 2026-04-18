@@ -82,7 +82,7 @@ export async function sendWhatsAppMessage(
   { ok: true; sid: string } | { ok: false; error: DeliveryError }
 > {
   const normalized = normalizeWhatsAppTo(to);
-  if (!normalized.ok) {
+  if ('error' in normalized) {
     logStructured({
       level: 'error',
       event: 'whatsapp_send_validation',

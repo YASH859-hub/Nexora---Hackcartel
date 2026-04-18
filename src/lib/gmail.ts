@@ -13,7 +13,7 @@ export interface GmailMessageSummary {
 export interface EmailActionItem {
   title: string;
   summary: string;
-  category: 'work' | 'spenditure' | 'other';
+  category: 'financial' | 'work' | 'other';
   priority: 'high' | 'medium' | 'low';
   nextAction: string;
   dueDate?: string;
@@ -203,7 +203,7 @@ function classifyEmail(message: GmailMessageSummary): EmailActionItem['category'
     'interview', 'assignment', 'onboarding', 'task', 'work', 'office',
   ];
 
-  if (spendSignals.some((signal) => text.includes(signal))) return 'spenditure';
+  if (spendSignals.some((signal) => text.includes(signal))) return 'financial';
   if (workSignals.some((signal) => text.includes(signal))) return 'work';
   return 'other';
 }
@@ -221,7 +221,7 @@ function classifyTextCategory(text: string): EmailActionItem['category'] {
     'interview', 'assignment', 'onboarding', 'task', 'work', 'office', 'reminder',
   ];
 
-  if (spendSignals.some((signal) => normalized.includes(signal))) return 'spenditure';
+  if (spendSignals.some((signal) => normalized.includes(signal))) return 'financial';
   if (workSignals.some((signal) => normalized.includes(signal))) return 'work';
   return 'other';
 }
@@ -321,7 +321,7 @@ async function extractWithDeepSeek(messages: GmailMessageSummary[]): Promise<Ema
         {
           role: 'system',
           content:
-            'You extract actionable items from email metadata. Return strict JSON array only. Each object must include title, summary, category (work|spenditure|other), priority (high|medium|low), nextAction, dueDate, sourceEmailId.',
+            'You are a strict email intelligence classifier. Analyze email metadata and infer tasks precisely. Return ONLY a valid JSON array. Each object must include title, summary, category (financial|work|other), priority (high|medium|low), nextAction, dueDate, sourceEmailId. Do not output markdown or commentary.',
         },
         {
           role: 'user',
@@ -361,7 +361,7 @@ async function extractWithDeepSeek(messages: GmailMessageSummary[]): Promise<Ema
         title: String(candidate.title || 'Untitled Action'),
         summary: String(candidate.summary || ''),
         category:
-          candidate.category === 'work' || candidate.category === 'spenditure' || candidate.category === 'other'
+          candidate.category === 'work' || candidate.category === 'financial' || candidate.category === 'other'
             ? candidate.category
             : 'other',
         priority,
@@ -495,7 +495,7 @@ async function extractWithDeepSeekFromText(
         {
           role: 'system',
           content:
-            'You extract structured email and calendar intelligence. Return strict JSON array only. Each object must include title, summary, category (work|spenditure|other), priority (high|medium|low), nextAction, dueDate, sourceEmailId, sourceType (email|calendar).',
+            'You are a strict event intelligence classifier for emails and calendar data. Return ONLY valid JSON array. Each object must include title, summary, category (financial|work|other), priority (high|medium|low), nextAction, dueDate, sourceEmailId, sourceType (email|calendar). Prioritize urgent financial dues and near-term events.',
         },
         {
           role: 'user',
@@ -537,7 +537,7 @@ async function extractWithDeepSeekFromText(
         title: String(candidate.title || 'Untitled Action'),
         summary: String(candidate.summary || ''),
         category:
-          candidate.category === 'work' || candidate.category === 'spenditure' || candidate.category === 'other'
+          candidate.category === 'work' || candidate.category === 'financial' || candidate.category === 'other'
             ? candidate.category
             : 'other',
         priority,

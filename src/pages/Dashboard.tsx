@@ -9,6 +9,7 @@ import {
 import { cn } from '../lib/utils';
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../lib/AuthContext';
+import { supabase } from '../lib/supabase';
 import {
   extractActionItems,
   extractCalendarActionItems,
@@ -63,6 +64,276 @@ function AnimatedStatusTicker() {
       </div>
     </div>
   );
+}
+
+const EVENT_PRIORITY_STORAGE_KEY = 'nexora_event_priority_state';
+const MANUAL_COMMITMENTS_STORAGE_KEY = 'nexora_manual_financial_commitments';
+const INJECTED_PRIORITY_ITEMS_TABLE = 'injected_priority_items';
+const INJECTED_MANUAL_COMMITMENTS_TABLE = 'manual_financial_commitments';
+
+const DEFAULT_INJECTED_PRIORITY_ITEMS: EmailActionItem[] = [
+  {
+    title: 'AMEX Gold Bill',
+    summary: 'Card payment due before the statement deadline.',
+    category: 'financial',
+    priority: 'high',
+    nextAction: 'Open the bill and make the payment today.',
+    dueDate: '2026-06-14T09:00:00.000Z',
+    sourceEmailId: 'demo-amex-gold-bill',
+    sourceType: 'email',
+  },
+  {
+    title: 'Netflix Renewal',
+    summary: 'Subscription renewal scheduled for this week.',
+    category: 'financial',
+    priority: 'medium',
+    nextAction: 'Review the renewal or cancel before the charge hits.',
+    dueDate: '2026-06-16T09:00:00.000Z',
+    sourceEmailId: 'demo-netflix-renewal',
+    sourceType: 'email',
+  },
+  {
+    title: 'Rent Payment',
+    summary: 'Monthly rent transfer needs to be prepared.',
+    category: 'financial',
+    priority: 'high',
+    nextAction: 'Schedule the transfer and confirm the payment window.',
+    dueDate: '2026-06-18T09:00:00.000Z',
+    sourceEmailId: 'demo-rent-payment',
+    sourceType: 'email',
+  },
+  {
+    title: 'Team Sync',
+    summary: 'Weekly calendar sync with the product team.',
+    category: 'work',
+    priority: 'medium',
+    nextAction: 'Prepare the project update and join on time.',
+    dueDate: '2026-06-12T10:00:00.000Z',
+    sourceEmailId: 'demo-team-sync',
+    sourceType: 'calendar',
+  },
+];
+
+const DEFAULT_INJECTED_MANUAL_COMMITMENTS: ManualFinancialCommitment[] = [
+  {
+    id: 'demo-manual-rent',
+    name: 'Rent Payment',
+    amount: 8000,
+    dueDate: '2026-06-18',
+    priority: 'high',
+    note: 'Monthly rent',
+    createdAt: '2026-04-18T00:00:00.000Z',
+  },
+  {
+    id: 'demo-manual-gym',
+    name: 'Gym Membership',
+    amount: 2500,
+    dueDate: '2026-06-20',
+    priority: 'medium',
+    note: 'Renew before the billing cycle ends',
+    createdAt: '2026-04-18T00:00:00.000Z',
+  },
+];
+
+type PersistedEventPriorityState = {
+  emails: GmailMessageSummary[];
+  calendarEvents: CalendarEventSummary[];
+  actionItems: EmailActionItem[];
+  prioritySender: string;
+  lastSyncedAt: string | null;
+};
+
+type ManualFinancialCommitment = {
+  id: string;
+  name: string;
+  amount: number;
+  dueDate: string;
+  priority: EmailActionItem['priority'];
+  note?: string;
+  createdAt: string;
+};
+
+type InjectedPriorityItemRow = {
+  id: string;
+  seed_key: string;
+  title: string;
+  summary: string;
+  category: EmailActionItem['category'];
+  priority: EmailActionItem['priority'];
+  next_action: string;
+  due_at: string | null;
+  source_type: 'email' | 'calendar' | 'manual';
+  source_ref: string | null;
+  created_at: string;
+};
+
+type InjectedManualCommitmentRow = {
+  id: string;
+  seed_key: string;
+  name: string;
+  amount: number | string;
+  due_date: string;
+  priority: EmailActionItem['priority'];
+  note: string | null;
+  created_at: string;
+};
+
+function loadEventPriorityState(): PersistedEventPriorityState {
+  try {
+    const raw = localStorage.getItem(EVENT_PRIORITY_STORAGE_KEY);
+    if (!raw) {
+      return { emails: [], calendarEvents: [], actionItems: [], prioritySender: '', lastSyncedAt: null };
+    }
+
+    const parsed = JSON.parse(raw) as Partial<PersistedEventPriorityState>;
+    return {
+      emails: Array.isArray(parsed.emails) ? parsed.emails : [],
+      calendarEvents: Array.isArray(parsed.calendarEvents) ? parsed.calendarEvents : [],
+      actionItems: Array.isArray(parsed.actionItems) ? parsed.actionItems : [],
+      prioritySender: typeof parsed.prioritySender === 'string' ? parsed.prioritySender : '',
+      lastSyncedAt: typeof parsed.lastSyncedAt === 'string' || parsed.lastSyncedAt === null ? parsed.lastSyncedAt : null,
+    };
+  } catch {
+    return { emails: [], calendarEvents: [], actionItems: [], prioritySender: '', lastSyncedAt: null };
+  }
+}
+
+function saveEventPriorityState(state: PersistedEventPriorityState) {
+  localStorage.setItem(EVENT_PRIORITY_STORAGE_KEY, JSON.stringify(state));
+}
+
+function loadManualFinancialCommitments(): ManualFinancialCommitment[] {
+  try {
+    const raw = localStorage.getItem(MANUAL_COMMITMENTS_STORAGE_KEY);
+    if (!raw) return [];
+
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed.filter((item): item is ManualFinancialCommitment => {
+      if (!item || typeof item !== 'object') return false;
+      const candidate = item as Record<string, unknown>;
+      return (
+        typeof candidate.id === 'string' &&
+        typeof candidate.name === 'string' &&
+        typeof candidate.amount === 'number' &&
+        typeof candidate.dueDate === 'string' &&
+        (candidate.priority === 'high' || candidate.priority === 'medium' || candidate.priority === 'low')
+      );
+    });
+  } catch {
+    return [];
+  }
+}
+
+function saveManualFinancialCommitments(commitments: ManualFinancialCommitment[]) {
+  localStorage.setItem(MANUAL_COMMITMENTS_STORAGE_KEY, JSON.stringify(commitments));
+}
+
+function mapInjectedPriorityItems(rows: InjectedPriorityItemRow[]): EmailActionItem[] {
+  return rows.map((row) => ({
+    title: row.title,
+    summary: row.summary,
+    category: row.category,
+    priority: row.priority,
+    nextAction: row.next_action,
+    dueDate: row.due_at || undefined,
+    sourceEmailId: row.source_ref || row.seed_key,
+    sourceType: row.source_type === 'manual' ? 'email' : row.source_type,
+  }));
+}
+
+function mapInjectedManualCommitments(rows: InjectedManualCommitmentRow[]): ManualFinancialCommitment[] {
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    amount: Number(row.amount),
+    dueDate: row.due_date,
+    priority: row.priority,
+    note: row.note || undefined,
+    createdAt: row.created_at,
+  }));
+}
+
+function mergeActionItems(baseItems: EmailActionItem[], injectedItems: EmailActionItem[]) {
+  const seen = new Set<string>();
+
+  return [...injectedItems, ...baseItems].filter((item) => {
+    const key = [item.sourceType, item.sourceEmailId || '', item.title, item.summary, item.dueDate || ''].join('|');
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+}
+
+function mergeCommitments(baseItems: ManualFinancialCommitment[], injectedItems: ManualFinancialCommitment[]) {
+  const seen = new Set<string>();
+
+  return [...injectedItems, ...baseItems].filter((item) => {
+    const key = [item.name, item.amount.toFixed(2), item.dueDate, item.priority, item.note || ''].join('|');
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+}
+
+async function fetchInjectedDashboardData() {
+  const [priorityResult, commitmentResult] = await Promise.all([
+    supabase.from(INJECTED_PRIORITY_ITEMS_TABLE).select('*').order('created_at', { ascending: true }),
+    supabase.from(INJECTED_MANUAL_COMMITMENTS_TABLE).select('*').order('created_at', { ascending: true }),
+  ]);
+
+  return {
+    priorityItems:
+      !priorityResult.error && priorityResult.data?.length
+        ? mapInjectedPriorityItems(priorityResult.data as InjectedPriorityItemRow[])
+        : [],
+    manualCommitments:
+      !commitmentResult.error && commitmentResult.data?.length
+        ? mapInjectedManualCommitments(commitmentResult.data as InjectedManualCommitmentRow[])
+        : [],
+  };
+}
+
+function useInjectedDashboardData() {
+  const [priorityItems, setPriorityItems] = useState<EmailActionItem[]>(DEFAULT_INJECTED_PRIORITY_ITEMS);
+  const [manualCommitments, setManualCommitments] = useState<ManualFinancialCommitment[]>(DEFAULT_INJECTED_MANUAL_COMMITMENTS);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      const injected = await fetchInjectedDashboardData();
+
+      if (cancelled) {
+        return;
+      }
+
+      setPriorityItems(injected.priorityItems.length ? injected.priorityItems : DEFAULT_INJECTED_PRIORITY_ITEMS);
+      setManualCommitments(injected.manualCommitments.length ? injected.manualCommitments : DEFAULT_INJECTED_MANUAL_COMMITMENTS);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return {
+    priorityItems,
+    manualCommitments,
+  };
+}
+
+function priorityScore(priority: EmailActionItem['priority']) {
+  if (priority === 'high') return 0;
+  if (priority === 'medium') return 1;
+  return 2;
 }
 
 function TopNav({ setActiveSection }: { setActiveSection: (section: string) => void }) {
@@ -171,7 +442,7 @@ function Sidebar({ activeSection, setActiveSection }: { activeSection: string, s
           <NavItem icon={LayoutDashboard} label="Overview" active={activeSection === 'overview'} onClick={() => setActiveSection('overview')} />
           <NavItem icon={CreditCard} label="Commitments" active={activeSection === 'commitments'} onClick={() => setActiveSection('commitments')} />
           <NavItem icon={Calendar} label="Event Priority" active={activeSection === 'events'} onClick={() => setActiveSection('events')} />
-          <NavItem icon={CheckSquare} label="Tasks" />
+          <NavItem icon={CheckSquare} label="Tasks" active={activeSection === 'tasks'} onClick={() => setActiveSection('tasks')} />
           <NavItem icon={FileText} label="Documents" />
           <NavItem icon={Zap} label="Automations" />
         </div>
@@ -203,20 +474,28 @@ function Sidebar({ activeSection, setActiveSection }: { activeSection: string, s
 }
 
 function EventPriorityDashboard() {
+  const persisted = loadEventPriorityState();
   const [accessToken, setAccessToken] = useState<string | null>(null);
-  const [emails, setEmails] = useState<GmailMessageSummary[]>([]);
-  const [calendarEvents, setCalendarEvents] = useState<CalendarEventSummary[]>([]);
-  const [actionItems, setActionItems] = useState<EmailActionItem[]>([]);
+  const [emails, setEmails] = useState<GmailMessageSummary[]>(persisted.emails);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEventSummary[]>(persisted.calendarEvents);
+  const [actionItems, setActionItems] = useState<EmailActionItem[]>(persisted.actionItems);
+  const { priorityItems: injectedPriorityItems } = useInjectedDashboardData();
   const [extractionMode, setExtractionMode] = useState<ExtractionResult['mode'] | 'mixed' | null>(null);
-  const [activeCategory, setActiveCategory] = useState<'all' | 'work' | 'spenditure' | 'other'>('all');
+  const [activeCategory, setActiveCategory] = useState<'all' | 'financial' | 'work' | 'other'>('all');
+  const [prioritySender, setPrioritySender] = useState(persisted.prioritySender);
   const [manualEventTitle, setManualEventTitle] = useState('');
   const [manualEventDate, setManualEventDate] = useState('');
   const [manualEventTime, setManualEventTime] = useState('');
   const [manualEventLocation, setManualEventLocation] = useState('');
   const [manualEventDescription, setManualEventDescription] = useState('');
+  const [manualFinanceTitle, setManualFinanceTitle] = useState('');
+  const [manualFinanceAmount, setManualFinanceAmount] = useState('');
+  const [manualFinanceDueDate, setManualFinanceDueDate] = useState('');
+  const [manualFinanceNote, setManualFinanceNote] = useState('');
+  const [manualFinancePriority, setManualFinancePriority] = useState<EmailActionItem['priority']>('high');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(persisted.lastSyncedAt ? new Date(persisted.lastSyncedAt) : null);
 
   const priorityClassMap: Record<EmailActionItem['priority'], string> = {
     high: 'bg-red-50 text-red-700 border-red-100',
@@ -226,17 +505,57 @@ function EventPriorityDashboard() {
 
   const categoryClassMap: Record<EmailActionItem['category'], string> = {
     work: 'bg-sky-50 text-sky-700 border-sky-100',
-    spenditure: 'bg-violet-50 text-violet-700 border-violet-100',
+    financial: 'bg-violet-50 text-violet-700 border-violet-100',
     other: 'bg-zinc-50 text-zinc-700 border-zinc-200',
   };
+
+  useEffect(() => {
+    if (!injectedPriorityItems.length) {
+      return;
+    }
+
+    const persistedState = loadEventPriorityState();
+    const mergedActionItems = mergeActionItems(persistedState.actionItems, injectedPriorityItems);
+
+    if (mergedActionItems.length === persistedState.actionItems.length) {
+      return;
+    }
+
+    setActionItems(mergedActionItems);
+    saveEventPriorityState({
+      ...persistedState,
+      actionItems: mergedActionItems,
+    });
+  }, [injectedPriorityItems]);
 
   const filteredActionItems =
     activeCategory === 'all'
       ? actionItems
       : actionItems.filter((item) => item.category === activeCategory);
 
+  const sortedFilteredActionItems = [...filteredActionItems].sort((a, b) => {
+    const senderNeedle = prioritySender.trim().toLowerCase();
+
+    const isPrioritySender = (item: EmailActionItem) => {
+      if (!senderNeedle || item.sourceType !== 'email') return false;
+      const source = emails.find((email) => email.id === item.sourceEmailId);
+      return source?.from?.toLowerCase().includes(senderNeedle) ?? false;
+    };
+
+    const senderScoreA = isPrioritySender(a) ? 0 : 1;
+    const senderScoreB = isPrioritySender(b) ? 0 : 1;
+    if (senderScoreA !== senderScoreB) return senderScoreA - senderScoreB;
+
+    const priorityDiff = priorityScore(a.priority) - priorityScore(b.priority);
+    if (priorityDiff !== 0) return priorityDiff;
+
+    const timeA = a.dueDate ? Date.parse(a.dueDate) : Number.MAX_SAFE_INTEGER;
+    const timeB = b.dueDate ? Date.parse(b.dueDate) : Number.MAX_SAFE_INTEGER;
+    return timeA - timeB;
+  });
+
   const totalSpendValue = actionItems
-    .filter((item) => item.category === 'spenditure')
+    .filter((item) => item.category === 'financial')
     .reduce((total, item) => {
       const amountMatch = item.summary.match(/(?:₹|INR\s?)(\d[\d,]*(?:\.\d+)?)/i) || item.title.match(/(?:₹|INR\s?)(\d[\d,]*(?:\.\d+)?)/i);
       const parsedAmount = amountMatch?.[1] ? Number(amountMatch[1].replace(/,/g, '')) : 0;
@@ -260,13 +579,23 @@ function EventPriorityDashboard() {
       const emailExtraction = await extractActionItems(fetchedEmails);
       const calendarExtraction = await extractCalendarActionItems(fetchedCalendarEvents);
 
-      setActionItems([...emailExtraction.items, ...calendarExtraction.items]);
+      const merged = [...emailExtraction.items, ...calendarExtraction.items];
+      setActionItems(merged);
       setExtractionMode(
         emailExtraction.mode === 'deepseek' && calendarExtraction.mode === 'deepseek'
           ? 'deepseek'
           : 'mixed',
       );
-      setLastSyncedAt(new Date());
+      const now = new Date();
+      setLastSyncedAt(now);
+
+      saveEventPriorityState({
+        emails: fetchedEmails,
+        calendarEvents: fetchedCalendarEvents,
+        actionItems: merged,
+        prioritySender,
+        lastSyncedAt: now.toISOString(),
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to sync Gmail data.');
     } finally {
@@ -300,7 +629,8 @@ function EventPriorityDashboard() {
     };
 
     setCalendarEvents((prev) => [manualEvent, ...prev]);
-    setActionItems((prev) => [createCalendarActionItem(manualEvent), ...prev]);
+    const nextItems = [createCalendarActionItem(manualEvent), ...actionItems];
+    setActionItems(nextItems);
     setExtractionMode('mixed');
     setManualEventTitle('');
     setManualEventDate('');
@@ -308,7 +638,77 @@ function EventPriorityDashboard() {
     setManualEventLocation('');
     setManualEventDescription('');
     setError(null);
-    setLastSyncedAt(new Date());
+    const now = new Date();
+    setLastSyncedAt(now);
+
+    saveEventPriorityState({
+      emails,
+      calendarEvents: [manualEvent, ...calendarEvents],
+      actionItems: nextItems,
+      prioritySender,
+      lastSyncedAt: now.toISOString(),
+    });
+  };
+
+  const addManualFinancialCommitment = () => {
+    if (!manualFinanceTitle.trim() || !manualFinanceAmount.trim()) {
+      setError('Please enter financial title and amount.');
+      return;
+    }
+
+    const dueText = manualFinanceDueDate || undefined;
+    const financeItem: EmailActionItem = {
+      title: manualFinanceTitle.trim(),
+      summary: `₹${manualFinanceAmount.trim()}${manualFinanceNote ? ` • ${manualFinanceNote.trim()}` : ''}`,
+      category: 'financial',
+      priority: manualFinancePriority,
+      nextAction: 'Review this commitment and complete payment before due date.',
+      dueDate: dueText,
+      sourceEmailId: `manual-finance-${Date.now()}`,
+      sourceType: 'email',
+    };
+
+    const commitment: ManualFinancialCommitment = {
+      id: `commitment-${Date.now()}`,
+      name: manualFinanceTitle.trim(),
+      amount: Number(manualFinanceAmount),
+      dueDate: manualFinanceDueDate || new Date().toISOString().slice(0, 10),
+      priority: manualFinancePriority,
+      note: manualFinanceNote.trim() || undefined,
+      createdAt: new Date().toISOString(),
+    };
+
+    const existingCommitments = loadManualFinancialCommitments();
+    saveManualFinancialCommitments([commitment, ...existingCommitments]);
+
+    const nextItems = [financeItem, ...actionItems];
+    setActionItems(nextItems);
+    setManualFinanceTitle('');
+    setManualFinanceAmount('');
+    setManualFinanceDueDate('');
+    setManualFinanceNote('');
+    setManualFinancePriority('high');
+    setError(null);
+
+    const now = new Date();
+    setLastSyncedAt(now);
+    saveEventPriorityState({
+      emails,
+      calendarEvents,
+      actionItems: nextItems,
+      prioritySender,
+      lastSyncedAt: now.toISOString(),
+    });
+  };
+
+  const applyPrioritySender = () => {
+    saveEventPriorityState({
+      emails,
+      calendarEvents,
+      actionItems,
+      prioritySender,
+      lastSyncedAt: lastSyncedAt ? lastSyncedAt.toISOString() : null,
+    });
   };
 
   return (
@@ -323,7 +723,7 @@ function EventPriorityDashboard() {
             <div>
               <h2 className="text-2xl font-serif italic text-primary">Event Priority List</h2>
               <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-                Event Priority merges Gmail and Calendar into one clean view for work, spenditure, and other priority items.
+                Event Priority merges Gmail and Calendar into one clean view for work, financial, and other priority items.
               </p>
             </div>
 
@@ -348,11 +748,6 @@ function EventPriorityDashboard() {
             <span className="px-2.5 py-1 rounded-full bg-muted border border-border">
               {actionItems.length} Action Items
             </span>
-            {extractionMode && (
-              <span className="px-2.5 py-1 rounded-full bg-muted border border-border">
-                Mode: {extractionMode === 'deepseek' ? 'DeepSeek' : extractionMode === 'mixed' ? 'Mixed' : 'Rule-based'}
-              </span>
-            )}
             <span className="px-2.5 py-1 rounded-full bg-muted border border-border">
               {calendarEvents.length} Calendar Events
             </span>
@@ -414,11 +809,90 @@ function EventPriorityDashboard() {
             />
           </div>
 
+          <div className="mt-4 rounded-xl border border-border bg-background p-4">
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <div>
+                <h3 className="font-serif italic text-lg">Manual Financial Commitment</h3>
+                <p className="text-xs text-muted-foreground mt-1">Add custom finance dues that should appear in priority and task sections.</p>
+              </div>
+              <CreditCard className="w-5 h-5 text-muted-foreground" />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
+              <input
+                value={manualFinanceTitle}
+                onChange={(e) => setManualFinanceTitle(e.target.value)}
+                placeholder="Commitment title"
+                className="px-3 py-2 rounded-lg border border-border bg-muted text-sm"
+              />
+              <input
+                value={manualFinanceAmount}
+                onChange={(e) => setManualFinanceAmount(e.target.value.replace(/[^0-9.]/g, ''))}
+                placeholder="Amount (INR)"
+                className="px-3 py-2 rounded-lg border border-border bg-muted text-sm"
+              />
+              <input
+                type="date"
+                value={manualFinanceDueDate}
+                onChange={(e) => setManualFinanceDueDate(e.target.value)}
+                className="px-3 py-2 rounded-lg border border-border bg-muted text-sm"
+              />
+              <select
+                value={manualFinancePriority}
+                onChange={(e) => setManualFinancePriority(e.target.value as EmailActionItem['priority'])}
+                className="px-3 py-2 rounded-lg border border-border bg-muted text-sm"
+              >
+                <option value="high">High Priority</option>
+                <option value="medium">Medium Priority</option>
+                <option value="low">Low Priority</option>
+              </select>
+              <button
+                onClick={addManualFinancialCommitment}
+                className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90"
+              >
+                Add Finance
+              </button>
+            </div>
+
+            <textarea
+              value={manualFinanceNote}
+              onChange={(e) => setManualFinanceNote(e.target.value)}
+              placeholder="Optional note"
+              rows={2}
+              className="mt-3 w-full px-3 py-2 rounded-lg border border-border bg-muted text-sm resize-none"
+            />
+          </div>
+
+          <div className="mt-4 rounded-xl border border-border bg-background p-4">
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <div>
+                <h3 className="font-serif italic text-lg">Priority Email Sender</h3>
+                <p className="text-xs text-muted-foreground mt-1">Enter an email id or sender text to pin matching emails to top; others follow normal priority order.</p>
+              </div>
+              <Mail className="w-5 h-5 text-muted-foreground" />
+            </div>
+
+            <div className="flex flex-col md:flex-row gap-3">
+              <input
+                value={prioritySender}
+                onChange={(e) => setPrioritySender(e.target.value)}
+                placeholder="name@company.com or sender keyword"
+                className="flex-1 px-3 py-2 rounded-lg border border-border bg-muted text-sm"
+              />
+              <button
+                onClick={applyPrioritySender}
+                className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90"
+              >
+                Apply Priority Sender
+              </button>
+            </div>
+          </div>
+
           <div className="mt-4 flex flex-wrap items-center gap-2">
             {([
               { key: 'all', label: 'All' },
+                { key: 'financial', label: 'Financial' },
               { key: 'work', label: 'Work' },
-              { key: 'spenditure', label: 'Spenditure' },
               { key: 'other', label: 'Other' },
             ] as const).map((filter) => (
               <button
@@ -451,9 +925,7 @@ function EventPriorityDashboard() {
           >
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-serif italic text-lg">Priority Actions</h3>
-              <span className="text-[0.7rem] uppercase tracking-widest text-muted-foreground">
-                {extractionMode === 'rules' ? 'Rule ranked' : 'DeepSeek ranked'}
-              </span>
+              <span className="text-[0.7rem] uppercase tracking-widest text-muted-foreground">Classified feed</span>
             </div>
 
             {!loading && filteredActionItems.length === 0 && (
@@ -463,7 +935,7 @@ function EventPriorityDashboard() {
             )}
 
             <div className="space-y-3">
-              {filteredActionItems.map((item, index) => (
+              {sortedFilteredActionItems.map((item, index) => (
                 <div key={`${item.sourceEmailId || 'item'}-${index}`} className="rounded-lg border border-border p-4 hover:border-primary/30 transition-colors">
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -577,7 +1049,7 @@ function EventPriorityDashboard() {
                 <div className="text-3xl font-semibold mt-1">₹{totalSpendValue.toLocaleString('en-IN')}</div>
               </div>
               <div className="text-xs text-muted-foreground text-right max-w-44">
-                Detected from spenditure-classified emails and calendar reminders.
+                Detected from financial emails and calendar reminders.
               </div>
             </div>
           </motion.div>
@@ -595,8 +1067,8 @@ function EventPriorityDashboard() {
             <div className="flex flex-wrap gap-2">
               {([
                 'all',
+                'financial',
                 'work',
-                'spenditure',
                 'other',
               ] as const).map((filter) => (
                 <button
@@ -610,6 +1082,104 @@ function EventPriorityDashboard() {
                 >
                   {filter}
                 </button>
+              ))}
+            </div>
+          </motion.div>
+        </section>
+
+      </div>
+    </main>
+  );
+}
+
+function TasksDashboard() {
+  const [persisted, setPersisted] = useState(() => loadEventPriorityState());
+  const { priorityItems: injectedPriorityItems } = useInjectedDashboardData();
+  const senderNeedle = persisted.prioritySender.trim().toLowerCase();
+
+  useEffect(() => {
+    if (!injectedPriorityItems.length) {
+      return;
+    }
+
+    setPersisted((current) => {
+      const mergedActionItems = mergeActionItems(current.actionItems, injectedPriorityItems);
+
+      if (mergedActionItems.length === current.actionItems.length) {
+        return current;
+      }
+
+      const next = {
+        ...current,
+        actionItems: mergedActionItems,
+      };
+
+      saveEventPriorityState(next);
+      return next;
+    });
+  }, [injectedPriorityItems]);
+
+  const isPriorityEmail = (item: EmailActionItem) => {
+    if (!senderNeedle || item.sourceType !== 'email') return false;
+    const source = persisted.emails.find((email) => email.id === item.sourceEmailId);
+    return source?.from?.toLowerCase().includes(senderNeedle) ?? false;
+  };
+
+  const sorted = [...persisted.actionItems].sort((a, b) => {
+    const senderScoreA = isPriorityEmail(a) ? 0 : 1;
+    const senderScoreB = isPriorityEmail(b) ? 0 : 1;
+    if (senderScoreA !== senderScoreB) return senderScoreA - senderScoreB;
+
+    const priorityDiff = priorityScore(a.priority) - priorityScore(b.priority);
+    if (priorityDiff !== 0) return priorityDiff;
+
+    const timeA = a.dueDate ? Date.parse(a.dueDate) : Number.MAX_SAFE_INTEGER;
+    const timeB = b.dueDate ? Date.parse(b.dueDate) : Number.MAX_SAFE_INTEGER;
+    return timeA - timeB;
+  });
+
+  const financeDueTasks = sorted.filter((item) => item.category === 'financial').slice(0, 8);
+  const upcomingEventTasks = sorted.filter((item) => item.sourceType === 'calendar' || item.category === 'work').slice(0, 8);
+
+  return (
+    <main className="flex-1 overflow-y-auto px-8 py-8">
+      <div className="max-w-5xl mx-auto flex flex-col gap-6">
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-6 rounded-xl bg-card border border-border">
+          <h2 className="text-2xl font-serif italic text-primary">Tasks</h2>
+          <p className="text-sm text-muted-foreground mt-1">Auto-generated from Event Priority intelligence: financial dues and upcoming events.</p>
+        </motion.div>
+
+        <section className="grid grid-cols-12 gap-6">
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="col-span-12 lg:col-span-6 bg-card rounded-xl border border-border p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-serif italic text-lg">Finance Due</h3>
+              <AlertTriangle className="w-4 h-4 text-amber-600" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {financeDueTasks.length === 0 && <div className="text-sm text-muted-foreground rounded-lg border border-dashed border-border p-4 col-span-full">No finance due tasks detected yet.</div>}
+              {financeDueTasks.map((task) => (
+                <div key={`task-finance-${task.sourceEmailId}`} className="rounded-lg border border-border bg-background/60 p-3">
+                  <div className="text-xs font-semibold line-clamp-2">{task.title}</div>
+                  <div className="text-[11px] text-muted-foreground mt-1">{task.dueDate || 'No due date'}</div>
+                  <div className="mt-2 text-[11px] text-muted-foreground line-clamp-2">{task.nextAction}</div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="col-span-12 lg:col-span-6 bg-card rounded-xl border border-border p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-serif italic text-lg">Upcoming Events</h3>
+              <TrendingUp className="w-4 h-4 text-sky-600" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {upcomingEventTasks.length === 0 && <div className="text-sm text-muted-foreground rounded-lg border border-dashed border-border p-4 col-span-full">No upcoming event tasks detected yet.</div>}
+              {upcomingEventTasks.map((task) => (
+                <div key={`task-event-${task.sourceEmailId}`} className="rounded-lg border border-border bg-background/60 p-3">
+                  <div className="text-xs font-semibold line-clamp-2">{task.title}</div>
+                  <div className="text-[11px] text-muted-foreground mt-1">{task.dueDate || 'No scheduled time'}</div>
+                  <div className="mt-2 text-[11px] text-muted-foreground line-clamp-2">{task.nextAction}</div>
+                </div>
               ))}
             </div>
           </motion.div>
@@ -641,6 +1211,26 @@ function CommitmentsDashboard() {
     { id: 1, name: 'Netflix', amount: '₹649/mo', date: 'Jun 16', status: 'active', source: 'Auto', color: '#8B5CF6' },
     { id: 2, name: 'Gym Membership', amount: '₹2,500/mo', date: 'Jun 20', status: 'active', source: 'Bank', color: '#EC4899' },
   ]);
+
+  const { manualCommitments: injectedCommitments } = useInjectedDashboardData();
+  const [manualCommitments, setManualCommitments] = useState<ManualFinancialCommitment[]>(() => loadManualFinancialCommitments());
+
+  useEffect(() => {
+    if (!injectedCommitments.length) {
+      return;
+    }
+
+    setManualCommitments((current) => {
+      const merged = mergeCommitments(current, injectedCommitments);
+
+      if (merged.length === current.length) {
+        return current;
+      }
+
+      saveManualFinancialCommitments(merged);
+      return merged;
+    });
+  }, [injectedCommitments]);
 
   return (
     <main className="flex-1 overflow-y-auto px-8 py-8">
@@ -691,6 +1281,37 @@ function CommitmentsDashboard() {
                       <div className="text-xs text-muted-foreground capitalize font-body">{sub.status}</div>
                     </div>
                     <button className="px-3 py-1 rounded bg-secondary text-foreground text-sm hover:bg-secondary/80 transition-colors font-body font-medium">Manage</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.section>
+
+          {/* Manual Commitments Section */}
+          <motion.section initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+            <h3 className="text-lg font-semibold font-display mb-4 text-foreground">Manual Financial Commitments</h3>
+            <div className="space-y-3">
+              {manualCommitments.length === 0 && (
+                <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground font-body">
+                  No manual commitments saved yet. Add them from the Event Priority tab.
+                </div>
+              )}
+
+              {manualCommitments.map((item) => (
+                <div key={item.id} className="flex items-center justify-between p-4 rounded-lg bg-background border border-border hover:border-accent/50 hover:shadow-md transition-all">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-3 h-3 rounded-full ${item.priority === 'high' ? 'bg-red-500' : item.priority === 'medium' ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                    <div>
+                      <div className="font-medium font-body text-foreground">{item.name}</div>
+                      <div className="text-sm text-muted-foreground font-body">
+                        Due {item.dueDate}{item.note ? ` • ${item.note}` : ''}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-right">
+                    <div className="font-semibold font-body text-foreground">₹{item.amount.toLocaleString('en-IN')}</div>
+                    <div className="text-xs text-muted-foreground uppercase tracking-wide">{item.priority}</div>
                   </div>
                 </div>
               ))}
@@ -941,6 +1562,10 @@ function MainWorkspace({ activeSection }: { activeSection: string }) {
 
   if (activeSection === 'events') {
     return <EventPriorityDashboard />;
+  }
+
+  if (activeSection === 'tasks') {
+    return <TasksDashboard />;
   }
 
   return (
