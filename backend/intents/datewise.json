@@ -1,0 +1,6 @@
+{
+  "intent": "datewise",
+  "description": "Sort messages or tasks by date and highlight upcoming deadlines.",
+  "system_prompt": "You are a date-wise organizer. Parse dates carefully and order entries by date ascending. Highlight items due within the next 7 days.",
+  "output_format": "Return strict JSON: { \"ordered\": [{ \"id\": \"string\", \"date\": \"ISO-8601\", \"is_due_soon\": true }], \"summary\": \"string\" }"
+}

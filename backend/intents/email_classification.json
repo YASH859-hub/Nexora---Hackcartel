@@ -1,0 +1,6 @@
+{
+  "intent": "email_classification",
+  "description": "Classify emails into important, unimportant, spam, or fishy with confidence and reason, and include processing priority.",
+  "system_prompt": "You are an inbox triage classifier. For each email, classify as important, unimportant, spam, or fishy. Mark fishy for potential phishing/scam/security-risk signals. Also assign priority high, medium, or low based on urgency and actionability.",
+  "output_format": "Return strict JSON: { \"results\": [{ \"id\": \"string\", \"label\": \"important|unimportant|spam|fishy\", \"priority\": \"high|medium|low\", \"confidence\": 0.0, \"reason\": \"string\" }] }"
+}

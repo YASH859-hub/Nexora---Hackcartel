@@ -10,6 +10,22 @@ export interface GmailMessageSummary {
   snippet: string;
 }
 
+export type GmailMailLabel = 'important' | 'unimportant' | 'spam' | 'fishy';
+
+export interface GmailMailClassification {
+  emailId: string;
+  label: GmailMailLabel;
+  priority: 'high' | 'medium' | 'low';
+  confidence: number;
+  reason: string;
+}
+
+export interface InboxClassificationResult {
+  items: GmailMailClassification[];
+  mode: 'ollama' | 'rules';
+  warning?: string;
+}
+
 export interface EmailActionItem {
   title: string;
   summary: string;
@@ -234,6 +250,203 @@ function inferPriority(text: string): EmailActionItem['priority'] {
   if (highSignals.some((signal) => normalized.includes(signal))) return 'high';
   if (mediumSignals.some((signal) => normalized.includes(signal))) return 'medium';
   return 'low';
+}
+
+const MAIL_PRIORITY_SIGNALS = {
+  important: [
+    'invoice', 'payment due', 'deadline', 'action required', 'urgent', 'meeting', 'interview', 'verification',
+    'security', 'bank', 'transaction', 'statement', 'rent', 'bill', 'offer letter', 'assessment',
+  ],
+  spam: [
+    'win cash', 'lottery', 'claim now', 'guaranteed income', 'free money', 'bonus reward', 'click now',
+    'crypto giveaway', 'cheap pills', 'adult', 'promo code', 'exclusive deal',
+  ],
+  fishy: [
+    'verify your account', 'password reset', 'suspended', 'unusual login', 'confirm your identity',
+    'gift card', 'wire transfer', 'bank alert', 'urgent response needed', 'security notice',
+  ],
+};
+
+function classifySingleEmailHeuristic(message: GmailMessageSummary): GmailMailClassification {
+  const normalized = `${message.from} ${message.subject} ${message.snippet}`.toLowerCase();
+  const priority = inferPriority(normalized);
+
+  if (MAIL_PRIORITY_SIGNALS.spam.some((signal) => normalized.includes(signal))) {
+    return {
+      emailId: message.id,
+      label: 'spam',
+      priority: 'low',
+      confidence: 0.78,
+      reason: 'Contains common bulk-promotion or spam phrases.',
+    };
+  }
+
+  if (MAIL_PRIORITY_SIGNALS.fishy.some((signal) => normalized.includes(signal))) {
+    return {
+      emailId: message.id,
+      label: 'fishy',
+      priority: 'high',
+      confidence: 0.72,
+      reason: 'Looks like a phishing-style security or credential request.',
+    };
+  }
+
+  if (MAIL_PRIORITY_SIGNALS.important.some((signal) => normalized.includes(signal)) || priority !== 'low') {
+    return {
+      emailId: message.id,
+      label: 'important',
+      priority,
+      confidence: 0.68,
+      reason: 'Contains work/financial action indicators or due-date urgency.',
+    };
+  }
+
+  return {
+    emailId: message.id,
+    label: 'unimportant',
+    priority: 'low',
+    confidence: 0.64,
+    reason: 'No urgent, sensitive, or action-required signals were detected.',
+  };
+}
+
+export function classifyEmailsHeuristic(messages: GmailMessageSummary[]): GmailMailClassification[] {
+  return messages.map((message) => classifySingleEmailHeuristic(message));
+}
+
+function parseClassificationJson(text: string): unknown {
+  const trimmed = text.trim();
+
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    return JSON.parse(trimmed);
+  }
+
+  const jsonBlockMatch = trimmed.match(/```json\s*([\s\S]*?)```/i);
+  if (jsonBlockMatch?.[1]) {
+    return JSON.parse(jsonBlockMatch[1]);
+  }
+
+  throw new Error('Ollama classification output is not valid JSON.');
+}
+
+function normalizeModelLabel(rawLabel: string): GmailMailLabel | null {
+  const normalized = rawLabel.toLowerCase().trim();
+  if (normalized === 'important') return 'important';
+  if (normalized === 'unimportant') return 'unimportant';
+  if (normalized === 'spam') return 'spam';
+  if (normalized === 'fishy') return 'fishy';
+  if (normalized === 'not_spam') return 'unimportant';
+  return null;
+}
+
+function parseInboxClassificationResponse(
+  rawText: string,
+  messages: GmailMessageSummary[],
+): GmailMailClassification[] {
+  const parsed = parseClassificationJson(rawText);
+  const rows = Array.isArray(parsed)
+    ? parsed
+    : parsed && typeof parsed === 'object' && Array.isArray((parsed as Record<string, unknown>).results)
+    ? (parsed as Record<string, unknown>).results
+    : [];
+
+  const messageById = new Map(messages.map((message) => [message.id, message]));
+
+  return rows
+    .map((row): GmailMailClassification | null => {
+      if (!row || typeof row !== 'object') return null;
+
+      const candidate = row as Record<string, unknown>;
+      const emailId = String(candidate.id || candidate.emailId || '').trim();
+      if (!emailId || !messageById.has(emailId)) return null;
+
+      const label = normalizeModelLabel(String(candidate.label || ''));
+      if (!label) return null;
+
+      const message = messageById.get(emailId)!;
+      const inferredPriority = inferPriority(`${message.subject} ${message.snippet} ${message.from}`);
+      const confidenceRaw = Number(candidate.confidence);
+      const confidence = Number.isFinite(confidenceRaw) ? Math.max(0, Math.min(1, confidenceRaw)) : 0.7;
+
+      const priorityRaw = String(candidate.priority || '').toLowerCase();
+      const priority: 'high' | 'medium' | 'low' =
+        priorityRaw === 'high' || priorityRaw === 'medium' || priorityRaw === 'low'
+          ? priorityRaw
+          : label === 'spam'
+          ? 'low'
+          : label === 'fishy'
+          ? 'high'
+          : inferredPriority;
+
+      return {
+        emailId,
+        label,
+        priority,
+        confidence,
+        reason: String(candidate.reason || 'Classified by Ollama based on email content.').slice(0, 240),
+      };
+    })
+    .filter((item): item is GmailMailClassification => Boolean(item));
+}
+
+export async function classifyEmailsForInbox(messages: GmailMessageSummary[]): Promise<InboxClassificationResult> {
+  if (!messages.length) {
+    return { items: [], mode: 'rules' };
+  }
+
+  const backendBase = import.meta.env.VITE_BACKEND_AI_BASE || 'http://localhost:6000';
+
+  try {
+    const response = await fetch(`${backendBase}/api/ai/intent`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        intent: 'email_classification',
+        input: {
+          task: 'Classify each email into important | unimportant | spam | fishy, and include priority high|medium|low.',
+          emails: messages.map((message) => ({
+            id: message.id,
+            from: message.from,
+            subject: message.subject,
+            snippet: message.snippet,
+            date: message.date,
+          })),
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Inbox classification request failed (${response.status}).`);
+    }
+
+    const json = await response.json() as { response?: string };
+    const raw = typeof json.response === 'string' ? json.response : '';
+    const parsedItems = parseInboxClassificationResponse(raw, messages);
+
+    if (!parsedItems.length) {
+      throw new Error('No valid classifications returned by model.');
+    }
+
+    const resultById = new Map(parsedItems.map((item) => [item.emailId, item]));
+    const completed = messages.map((message) => resultById.get(message.id) || classifySingleEmailHeuristic(message));
+
+    return {
+      items: completed,
+      mode: 'ollama',
+    };
+  } catch (error) {
+    if (error instanceof Error) {
+      console.warn('Ollama inbox classification failed, using rule-based fallback:', error.message);
+    }
+
+    return {
+      items: classifyEmailsHeuristic(messages),
+      mode: 'rules',
+      warning: 'Ollama unavailable, switched to rule-based inbox classification.',
+    };
+  }
 }
 
 function formatCalendarDate(dateTime?: string, date?: string): string {

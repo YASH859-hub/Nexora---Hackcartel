@@ -12,6 +12,8 @@ import {
   createBriefingRouter,
   createLegacyWhatsAppRouter,
 } from './routes/briefingRoutes.js';
+import { createAiRouter } from './routes/aiRoutes.js';
+import { sendWhatsAppMessage } from './lib/whatsappDelivery.js';
 import { brandWhatsAppBody } from './lib/whatsappBranding.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -20,7 +22,7 @@ const __dirname = path.dirname(__filename);
 // Single repo-root .env for frontend (Vite) + backend
 dotenv.config({
   path: path.resolve(__dirname, '..', '..', '.env'),
-  override: true,
+  override: false,
 });
 
 const app: Express = express();
@@ -68,6 +70,7 @@ app.use(
   '/api/whatsapp',
   createLegacyWhatsAppRouter(twilioClient, whatsappNumber)
 );
+app.use('/api/ai', createAiRouter());
 
 const stopBriefingCron = startBriefingScheduler(twilioClient, whatsappNumber);
 
@@ -157,29 +160,95 @@ app.post('/api/send-notification', async (req: Request, res: Response) => {
   }
 });
 
-// Test Twilio connection
-app.get('/api/test-twilio', async (req: Request, res: Response) => {
+app.post('/api/auth/login-notification', async (req: Request, res: Response) => {
   try {
-    const account = await twilioClient.api.accounts.list({ limit: 1 });
+    const { phoneNumber, email, fullName } = req.body ?? {};
 
-    if (account.length > 0) {
-      res.json({
-        success: true,
-        message: 'Twilio connection successful',
-        account: account[0].friendlyName,
-      });
-    } else {
-      res.status(500).json({
-        error: 'Could not verify Twilio account',
+    if (!phoneNumber || typeof phoneNumber !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'phoneNumber is required',
       });
     }
-  } catch (error) {
-    console.error('❌ Twilio connection error:', error);
 
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    res.status(500).json({
-      error: 'Twilio connection failed',
-      details: errorMessage,
+    const displayName = typeof fullName === 'string' && fullName.trim()
+      ? fullName.trim()
+      : typeof email === 'string' && email.trim()
+        ? email.trim()
+        : 'User';
+
+    const result = await sendWhatsAppMessage(
+      twilioClient,
+      whatsappNumber,
+      phoneNumber,
+      `Welcome back, ${displayName}. You have successfully logged in to Nexora.`
+    );
+
+    if (!result.ok) {
+      return res.status(502).json({
+        success: false,
+        error: result.error,
+      });
+    }
+
+    return res.json({
+      success: true,
+      sid: result.sid,
+    });
+  } catch (error) {
+    console.error('❌ Error sending login notification:', error);
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to send login notification',
+    });
+  }
+});
+
+// Gmail Sync Endpoint - syncs encrypted emails with Supabase
+app.post('/api/gmail/sync-user', async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.body;
+
+    if (!userId || typeof userId !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: 'userId is required',
+      });
+    }
+
+    // Note: Full Gmail sync would require:
+    // 1. User's Gmail OAuth token (stored in Supabase)
+    // 2. Gmail API client setup
+    // 3. Incremental sync using history ID from user_sync_state
+    // 4. Encryption on client-side (backend doesn't have keys)
+    //
+    // For now, this endpoint serves as:
+    // - A placeholder for frontend to call
+    // - A logging checkpoint for sync status
+    // - Future expansion point for background sync jobs
+
+    console.log(`📨 Gmail sync requested for user: ${userId}`);
+
+    // In production, you would:
+    // 1. Fetch user's Gmail OAuth token from Supabase
+    // 2. Get last sync checkpoint from user_sync_state
+    // 3. Fetch new emails from Gmail API
+    // 4. Return email list (encrypted by client before storage)
+    // 5. Update last_sync_at in user_sync_state
+
+    return res.json({
+      success: true,
+      message: 'Gmail sync initiated',
+      userId,
+      itemsAdded: 0,
+      itemsUpdated: 0,
+      note: 'Full Gmail API integration coming soon. Client handles encryption.',
+    });
+  } catch (error) {
+    console.error('❌ Error initiating Gmail sync:', error);
+    return res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Sync failed',
     });
   }
 });
@@ -192,7 +261,10 @@ const server = app.listen(PORT, () => {
   console.log(`📋 POST /api/briefing/subscribers — register user + tasks`);
   console.log(`📋 POST /api/briefing/send-now — send one briefing`);
   console.log(`📋 POST /api/whatsapp/send — legacy briefing body`);
+  console.log(`🤖 POST /api/ai/chat — Ollama chat (phi3)`);
+  console.log(`🤖 POST /api/ai/intent — Ollama intent task`);
   console.log(`❤️  GET  /health`);
+  console.log(`📨 POST /api/gmail/sync-user — sync encrypted inbox`);
   console.log(
     `📤 Briefings: daily 8:00 (${process.env.BRIEFING_TZ || 'server local'}) + on startup if BRIEFING_SEND_ON_STARTUP is not false\n`
   );

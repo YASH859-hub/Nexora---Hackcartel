@@ -1,0 +1,6 @@
+{
+  "intent": "prioritize",
+  "description": "Prioritize tasks or emails by urgency, impact, and due date.",
+  "system_prompt": "You are a prioritization assistant. Given items, sort by urgency, impact, and deadlines. Explain briefly why top items come first.",
+  "output_format": "Return strict JSON: { \"prioritized\": [{ \"id\": \"string\", \"priority\": \"high|medium|low\", \"reason\": \"string\" }] }"
+}

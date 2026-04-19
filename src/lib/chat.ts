@@ -3,10 +3,34 @@ export interface ChatMessage {
   content: string;
 }
 
+const BACKEND_AI_BASE = import.meta.env.VITE_BACKEND_AI_BASE || 'http://localhost:6000';
+
 export async function generateChatResponse(messages: ChatMessage[]): Promise<string> {
+  try {
+    const ollamaResponse = await fetch(`${BACKEND_AI_BASE}/api/ai/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messages,
+      }),
+    });
+
+    if (ollamaResponse.ok) {
+      const ollamaData = await ollamaResponse.json();
+      const text = ollamaData?.response;
+      if (typeof text === 'string' && text.trim().length > 0) {
+        return text;
+      }
+    }
+  } catch (error) {
+    console.warn('Ollama backend unavailable, falling back to Gemini.', error);
+  }
+
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
   if (!apiKey) {
-    throw new Error('Missing VITE_GEMINI_API_KEY in environment variables.');
+    throw new Error('Missing VITE_GEMINI_API_KEY and Ollama backend unavailable.');
   }
 
   // Gemini API uses 'user' and 'model' as roles

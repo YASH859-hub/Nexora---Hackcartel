@@ -110,7 +110,7 @@ async function main() {
 
 main().catch((error) => {
   if (error && typeof error === 'object' && 'code' in error && error.code === 'PGRST205') {
-    console.error('Seed failed: apply SUPABASE_DASHBOARD_SCHEMA.sql in Supabase first, then rerun this script.');
+    console.error('Seed failed: apply database/sql/SUPABASE_DASHBOARD_SCHEMA.sql in Supabase first, then rerun this script.');
     process.exit(1);
   }
 

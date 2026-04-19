@@ -6,7 +6,7 @@
 2. Select your project
 3. Go to **SQL Editor** in the left sidebar
 4. Click **New Query**
-5. Copy all the SQL from `DATABASE_SETUP.sql` in this project
+5. Copy all the SQL from `database/sql/DATABASE_SETUP.sql` in this project
 6. Paste it into the SQL editor
 7. Click **Run** to execute the schema creation
 
@@ -88,7 +88,7 @@ Get these from your Supabase project settings → API.
 ## Troubleshooting
 
 **Issue**: "Error creating user profile" after sign up
-- **Solution**: Make sure you've run the DATABASE_SETUP.sql in Supabase and the `users` table exists
+- **Solution**: Make sure you've run `database/sql/DATABASE_SETUP.sql` in Supabase and the `users` table exists
 
 **Issue**: Sign up works but can't sign in
 - **Solution**: After sign up, you must click the confirmation link in the email (or disable email confirmation in Supabase settings for testing)

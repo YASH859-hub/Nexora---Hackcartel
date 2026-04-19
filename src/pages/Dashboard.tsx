@@ -7,16 +7,19 @@ import {
   Command, AlertCircle, LogOut, TrendingUp, AlertTriangle, Activity, MessageCircle
 } from 'lucide-react';
 import { cn } from '../lib/utils';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../lib/AuthContext';
 import { supabase } from '../lib/supabase';
 import {
   extractActionItems, 
   extractCalendarActionItems,
+  classifyEmailsForInbox,
+  classifyEmailsHeuristic,
   createCalendarActionItem,
   fetchRecentEmails,
   fetchUpcomingCalendarEvents,
   requestGmailAccessToken,
+  type GmailMailClassification,
   type EmailActionItem,
   type ExtractionResult,
   type CalendarEventSummary,
@@ -70,6 +73,7 @@ function AnimatedStatusTicker() {
 
 const EVENT_PRIORITY_STORAGE_KEY = 'nexora_event_priority_state';
 const MANUAL_COMMITMENTS_STORAGE_KEY = 'nexora_manual_financial_commitments';
+const MANUAL_WORK_STORAGE_KEY = 'nexora_manual_work_commitments';
 const INJECTED_PRIORITY_ITEMS_TABLE = 'injected_priority_items';
 const INJECTED_MANUAL_COMMITMENTS_TABLE = 'manual_financial_commitments';
 
@@ -155,6 +159,15 @@ type ManualFinancialCommitment = {
   createdAt: string;
 };
 
+type ManualWorkCommitment = {
+  id: string;
+  title: string;
+  dueDate: string;
+  priority: EmailActionItem['priority'];
+  note?: string;
+  createdAt: string;
+};
+
 type InjectedPriorityItemRow = {
   id: string;
   seed_key: string;
@@ -230,6 +243,33 @@ function loadManualFinancialCommitments(): ManualFinancialCommitment[] {
 
 function saveManualFinancialCommitments(commitments: ManualFinancialCommitment[]) {
   localStorage.setItem(MANUAL_COMMITMENTS_STORAGE_KEY, JSON.stringify(commitments));
+}
+
+function loadManualWorkCommitments(): ManualWorkCommitment[] {
+  try {
+    const raw = localStorage.getItem(MANUAL_WORK_STORAGE_KEY);
+    if (!raw) return [];
+
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed.filter((item): item is ManualWorkCommitment => {
+      if (!item || typeof item !== 'object') return false;
+      const candidate = item as Record<string, unknown>;
+      return (
+        typeof candidate.id === 'string' &&
+        typeof candidate.title === 'string' &&
+        typeof candidate.dueDate === 'string' &&
+        (candidate.priority === 'high' || candidate.priority === 'medium' || candidate.priority === 'low')
+      );
+    });
+  } catch {
+    return [];
+  }
+}
+
+function saveManualWorkCommitments(commitments: ManualWorkCommitment[]) {
+  localStorage.setItem(MANUAL_WORK_STORAGE_KEY, JSON.stringify(commitments));
 }
 
 function mapInjectedPriorityItems(rows: InjectedPriorityItemRow[]): EmailActionItem[] {
@@ -484,6 +524,7 @@ function Sidebar({ activeSection, setActiveSection }: { activeSection: string, s
 
 function EventPriorityDashboard() {
   const persisted = loadEventPriorityState();
+  const { user } = useAuth();
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [emails, setEmails] = useState<GmailMessageSummary[]>(persisted.emails);
   const [calendarEvents, setCalendarEvents] = useState<CalendarEventSummary[]>(persisted.calendarEvents);
@@ -497,14 +538,17 @@ function EventPriorityDashboard() {
   const [manualEventTime, setManualEventTime] = useState('');
   const [manualEventLocation, setManualEventLocation] = useState('');
   const [manualEventDescription, setManualEventDescription] = useState('');
-  const [manualFinanceTitle, setManualFinanceTitle] = useState('');
-  const [manualFinanceAmount, setManualFinanceAmount] = useState('');
-  const [manualFinanceDueDate, setManualFinanceDueDate] = useState('');
-  const [manualFinanceNote, setManualFinanceNote] = useState('');
-  const [manualFinancePriority, setManualFinancePriority] = useState<EmailActionItem['priority']>('high');
+  const [manualEmailSender, setManualEmailSender] = useState('');
+  const [manualEmailSubject, setManualEmailSubject] = useState('');
+  const [manualEmailSnippet, setManualEmailSnippet] = useState('');
+  const [manualEmailLabel, setManualEmailLabel] = useState<GmailMailClassification['label']>('important');
+  const [manualEmailPriority, setManualEmailPriority] = useState<EmailActionItem['priority']>('high');
+  const [manualEmailReason, setManualEmailReason] = useState('Manual review result');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(persisted.lastSyncedAt ? new Date(persisted.lastSyncedAt) : null);
+  const [mailClassifications, setMailClassifications] = useState<Record<string, GmailMailClassification>>({});
+  const [mailClassificationMode, setMailClassificationMode] = useState<'ollama' | 'rules' | null>(null);
 
   const priorityClassMap: Record<EmailActionItem['priority'], string> = {
     high: 'bg-red-50 text-red-700 border-red-100',
@@ -517,6 +561,60 @@ function EventPriorityDashboard() {
     financial: 'bg-violet-50 text-violet-700 border-violet-100',
     other: 'bg-zinc-50 text-zinc-700 border-zinc-200',
   };
+
+  const connectAndAnalyze = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const token = accessToken || (await requestGmailAccessToken());
+      setAccessToken(token);
+
+      const fetchedEmails = await fetchRecentEmails(token, 12);
+      setEmails(fetchedEmails);
+
+      const inboxClassification = await classifyEmailsForInbox(fetchedEmails);
+      setMailClassifications(
+        Object.fromEntries(inboxClassification.items.map((item) => [item.emailId, item])),
+      );
+      setMailClassificationMode(inboxClassification.mode);
+
+      const fetchedCalendarEvents = await fetchUpcomingCalendarEvents(token, 12);
+      setCalendarEvents(fetchedCalendarEvents);
+
+      const emailExtraction = await extractActionItems(fetchedEmails);
+      const calendarExtraction = await extractCalendarActionItems(fetchedCalendarEvents);
+
+      const merged = [...emailExtraction.items, ...calendarExtraction.items];
+      setActionItems(merged);
+      setExtractionMode(
+        emailExtraction.mode === 'deepseek' && calendarExtraction.mode === 'deepseek'
+          ? 'deepseek'
+          : 'mixed',
+      );
+      const now = new Date();
+      setLastSyncedAt(now);
+
+      saveEventPriorityState({
+        emails: fetchedEmails,
+        calendarEvents: fetchedCalendarEvents,
+        actionItems: merged,
+        prioritySender,
+        lastSyncedAt: now.toISOString(),
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to sync Gmail data.');
+    } finally {
+      setLoading(false);
+    }
+  }, [accessToken, prioritySender]);
+
+  // Auto-connect Gmail when user logs in
+  useEffect(() => {
+    if (user && !accessToken && !loading) {
+      connectAndAnalyze();
+    }
+  }, [user, accessToken, loading, connectAndAnalyze]);
 
   useEffect(() => {
     if (!injectedPriorityItems.length) {
@@ -571,45 +669,81 @@ function EventPriorityDashboard() {
       return total + (Number.isFinite(parsedAmount) ? parsedAmount : 0);
     }, 0);
 
-  const connectAndAnalyze = async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const token = accessToken || (await requestGmailAccessToken());
-      setAccessToken(token);
-
-      const fetchedEmails = await fetchRecentEmails(token, 12);
-      setEmails(fetchedEmails);
-
-      const fetchedCalendarEvents = await fetchUpcomingCalendarEvents(token, 12);
-      setCalendarEvents(fetchedCalendarEvents);
-
-      const emailExtraction = await extractActionItems(fetchedEmails);
-      const calendarExtraction = await extractCalendarActionItems(fetchedCalendarEvents);
-
-      const merged = [...emailExtraction.items, ...calendarExtraction.items];
-      setActionItems(merged);
-      setExtractionMode(
-        emailExtraction.mode === 'deepseek' && calendarExtraction.mode === 'deepseek'
-          ? 'deepseek'
-          : 'mixed',
-      );
-      const now = new Date();
-      setLastSyncedAt(now);
-
-      saveEventPriorityState({
-        emails: fetchedEmails,
-        calendarEvents: fetchedCalendarEvents,
-        actionItems: merged,
-        prioritySender,
-        lastSyncedAt: now.toISOString(),
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to sync Gmail data.');
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (!emails.length || Object.keys(mailClassifications).length > 0) {
+      return;
     }
+
+    const fallbackItems = classifyEmailsHeuristic(emails);
+    setMailClassifications(
+      Object.fromEntries(fallbackItems.map((item) => [item.emailId, item])),
+    );
+    setMailClassificationMode('rules');
+  }, [emails, mailClassifications]);
+
+  const classifiedEmailRows = emails
+    .map((email) => {
+      const classification =
+        mailClassifications[email.id] ||
+        ({
+          emailId: email.id,
+          label: 'unimportant',
+          priority: 'low',
+          confidence: 0.5,
+          reason: 'Pending classification.',
+        } satisfies GmailMailClassification);
+
+      return {
+        email,
+        classification,
+      };
+    })
+    .sort((a, b) => {
+      const labelRank: Record<GmailMailClassification['label'], number> = {
+        important: 0,
+        unimportant: 1,
+        fishy: 2,
+        spam: 3,
+      };
+
+      const priorityRank: Record<GmailMailClassification['priority'], number> = {
+        high: 0,
+        medium: 1,
+        low: 2,
+      };
+
+      const labelDiff = labelRank[a.classification.label] - labelRank[b.classification.label];
+      if (labelDiff !== 0) return labelDiff;
+
+      const priorityDiff = priorityRank[a.classification.priority] - priorityRank[b.classification.priority];
+      if (priorityDiff !== 0) return priorityDiff;
+
+      return (b.classification.confidence || 0) - (a.classification.confidence || 0);
+    });
+
+  const importantEmails = classifiedEmailRows.filter((row) => row.classification.label === 'important');
+  const unimportantEmails = classifiedEmailRows.filter((row) => row.classification.label === 'unimportant');
+  const fishyEmails = classifiedEmailRows.filter((row) => row.classification.label === 'fishy');
+  const spamEmails = classifiedEmailRows.filter((row) => row.classification.label === 'spam');
+
+  const updateMailClassification = (
+    emailId: string,
+    label: GmailMailClassification['label'],
+    reason: string,
+  ) => {
+    const priority: GmailMailClassification['priority'] =
+      label === 'important' ? 'high' : label === 'fishy' ? 'high' : label === 'unimportant' ? 'low' : 'low';
+
+    setMailClassifications((current) => ({
+      ...current,
+      [emailId]: {
+        emailId,
+        label,
+        priority,
+        confidence: 1,
+        reason,
+      },
+    }));
   };
 
   const addManualCalendarEvent = () => {
@@ -659,52 +793,51 @@ function EventPriorityDashboard() {
     });
   };
 
-  const addManualFinancialCommitment = () => {
-    if (!manualFinanceTitle.trim() || !manualFinanceAmount.trim()) {
-      setError('Please enter financial title and amount.');
+  const addManualPriorityEmail = () => {
+    if (!manualEmailSender.trim() || !manualEmailSubject.trim()) {
+      setError('Please enter sender and subject for the manual email recogniser.');
       return;
     }
 
-    const dueText = manualFinanceDueDate || undefined;
-    const financeItem: EmailActionItem = {
-      title: manualFinanceTitle.trim(),
-      summary: `₹${manualFinanceAmount.trim()}${manualFinanceNote ? ` • ${manualFinanceNote.trim()}` : ''}`,
-      category: 'financial',
-      priority: manualFinancePriority,
-      nextAction: 'Review this commitment and complete payment before due date.',
-      dueDate: dueText,
-      sourceEmailId: `manual-finance-${Date.now()}`,
-      sourceType: 'email',
+    const manualEmail: GmailMessageSummary = {
+      id: `manual-email-${Date.now()}`,
+      from: manualEmailSender.trim(),
+      subject: manualEmailSubject.trim(),
+      date: new Date().toISOString(),
+      snippet: manualEmailSnippet.trim() || 'Manually recognised inbox item.',
     };
 
-    const commitment: ManualFinancialCommitment = {
-      id: `commitment-${Date.now()}`,
-      name: manualFinanceTitle.trim(),
-      amount: Number(manualFinanceAmount),
-      dueDate: manualFinanceDueDate || new Date().toISOString().slice(0, 10),
-      priority: manualFinancePriority,
-      note: manualFinanceNote.trim() || undefined,
-      createdAt: new Date().toISOString(),
+    const classification: GmailMailClassification = {
+      emailId: manualEmail.id,
+      label: manualEmailLabel,
+      priority: manualEmailPriority,
+      confidence: 1,
+      reason: manualEmailReason.trim() || 'Manually recognised inbox item.',
     };
 
-    const existingCommitments = loadManualFinancialCommitments();
-    saveManualFinancialCommitments([commitment, ...existingCommitments]);
+    const nextEmails = [manualEmail, ...emails];
+    const nextClassifications = {
+      ...mailClassifications,
+      [manualEmail.id]: classification,
+    };
 
-    const nextItems = [financeItem, ...actionItems];
-    setActionItems(nextItems);
-    setManualFinanceTitle('');
-    setManualFinanceAmount('');
-    setManualFinanceDueDate('');
-    setManualFinanceNote('');
-    setManualFinancePriority('high');
+    setEmails(nextEmails);
+    setMailClassifications(nextClassifications);
+    setMailClassificationMode('rules');
+    setManualEmailSender('');
+    setManualEmailSubject('');
+    setManualEmailSnippet('');
+    setManualEmailLabel('important');
+    setManualEmailPriority('high');
+    setManualEmailReason('Manual review result');
     setError(null);
 
     const now = new Date();
     setLastSyncedAt(now);
     saveEventPriorityState({
-      emails,
+      emails: nextEmails,
       calendarEvents,
-      actionItems: nextItems,
+      actionItems,
       prioritySender,
       lastSyncedAt: now.toISOString(),
     });
@@ -742,7 +875,7 @@ function EventPriorityDashboard() {
                 disabled={loading}
                 className="h-10 px-5 rounded-full bg-primary text-primary-foreground font-medium text-sm hover:opacity-90 transition-all disabled:opacity-60"
               >
-                {loading ? 'Analyzing...' : accessToken ? 'Refresh Priority List' : 'Connect Gmail'}
+                {loading ? 'Analyzing...' : 'Refresh Priority List'}
               </button>
             </div>
           </div>
@@ -765,136 +898,6 @@ function EventPriorityDashboard() {
                 Last sync {lastSyncedAt.toLocaleTimeString()}
               </span>
             )}
-          </div>
-
-          <div className="mt-4 rounded-xl border border-border bg-background p-4">
-            <div className="flex items-center justify-between gap-3 mb-4">
-              <div>
-                <h3 className="font-serif italic text-lg">Add Manual Calendar Event</h3>
-                <p className="text-xs text-muted-foreground mt-1">Create an event locally and include it in the Event Priority list.</p>
-              </div>
-              <Calendar className="w-5 h-5 text-muted-foreground" />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
-              <input
-                value={manualEventTitle}
-                onChange={(e) => setManualEventTitle(e.target.value)}
-                placeholder="Event title"
-                className="px-3 py-2 rounded-lg border border-border bg-muted text-sm"
-              />
-              <input
-                type="date"
-                value={manualEventDate}
-                onChange={(e) => setManualEventDate(e.target.value)}
-                className="px-3 py-2 rounded-lg border border-border bg-muted text-sm"
-              />
-              <input
-                type="time"
-                value={manualEventTime}
-                onChange={(e) => setManualEventTime(e.target.value)}
-                className="px-3 py-2 rounded-lg border border-border bg-muted text-sm"
-              />
-              <input
-                value={manualEventLocation}
-                onChange={(e) => setManualEventLocation(e.target.value)}
-                placeholder="Location"
-                className="px-3 py-2 rounded-lg border border-border bg-muted text-sm"
-              />
-              <button
-                onClick={addManualCalendarEvent}
-                className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90"
-              >
-                Add Event
-              </button>
-            </div>
-
-            <textarea
-              value={manualEventDescription}
-              onChange={(e) => setManualEventDescription(e.target.value)}
-              placeholder="Optional notes or agenda"
-              rows={3}
-              className="mt-3 w-full px-3 py-2 rounded-lg border border-border bg-muted text-sm resize-none"
-            />
-          </div>
-
-          <div className="mt-4 rounded-xl border border-border bg-background p-4">
-            <div className="flex items-center justify-between gap-3 mb-4">
-              <div>
-                <h3 className="font-serif italic text-lg">Manual Financial Commitment</h3>
-                <p className="text-xs text-muted-foreground mt-1">Add custom finance dues that should appear in priority and task sections.</p>
-              </div>
-              <CreditCard className="w-5 h-5 text-muted-foreground" />
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3">
-              <input
-                value={manualFinanceTitle}
-                onChange={(e) => setManualFinanceTitle(e.target.value)}
-                placeholder="Commitment title"
-                className="px-3 py-2 rounded-lg border border-border bg-muted text-sm"
-              />
-              <input
-                value={manualFinanceAmount}
-                onChange={(e) => setManualFinanceAmount(e.target.value.replace(/[^0-9.]/g, ''))}
-                placeholder="Amount (INR)"
-                className="px-3 py-2 rounded-lg border border-border bg-muted text-sm"
-              />
-              <input
-                type="date"
-                value={manualFinanceDueDate}
-                onChange={(e) => setManualFinanceDueDate(e.target.value)}
-                className="px-3 py-2 rounded-lg border border-border bg-muted text-sm"
-              />
-              <select
-                value={manualFinancePriority}
-                onChange={(e) => setManualFinancePriority(e.target.value as EmailActionItem['priority'])}
-                className="px-3 py-2 rounded-lg border border-border bg-muted text-sm"
-              >
-                <option value="high">High Priority</option>
-                <option value="medium">Medium Priority</option>
-                <option value="low">Low Priority</option>
-              </select>
-              <button
-                onClick={addManualFinancialCommitment}
-                className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90"
-              >
-                Add Finance
-              </button>
-            </div>
-
-            <textarea
-              value={manualFinanceNote}
-              onChange={(e) => setManualFinanceNote(e.target.value)}
-              placeholder="Optional note"
-              rows={2}
-              className="mt-3 w-full px-3 py-2 rounded-lg border border-border bg-muted text-sm resize-none"
-            />
-          </div>
-
-          <div className="mt-4 rounded-xl border border-border bg-background p-4">
-            <div className="flex items-center justify-between gap-3 mb-4">
-              <div>
-                <h3 className="font-serif italic text-lg">Priority Email Sender</h3>
-                <p className="text-xs text-muted-foreground mt-1">Enter an email id or sender text to pin matching emails to top; others follow normal priority order.</p>
-              </div>
-              <Mail className="w-5 h-5 text-muted-foreground" />
-            </div>
-
-            <div className="flex flex-col md:flex-row gap-3">
-              <input
-                value={prioritySender}
-                onChange={(e) => setPrioritySender(e.target.value)}
-                placeholder="name@company.com or sender keyword"
-                className="flex-1 px-3 py-2 rounded-lg border border-border bg-muted text-sm"
-              />
-              <button
-                onClick={applyPrioritySender}
-                className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90"
-              >
-                Apply Priority Sender
-              </button>
-            </div>
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -930,47 +933,51 @@ function EventPriorityDashboard() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.05 }}
-            className="col-span-12 lg:col-span-8 bg-card rounded-xl border border-border p-5"
+            className="col-span-12 lg:col-span-7 bg-card rounded-xl border border-border p-5 h-full"
           >
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-serif italic text-lg">Priority Actions</h3>
               <span className="text-[0.7rem] uppercase tracking-widest text-muted-foreground">Classified feed</span>
             </div>
 
-            {!loading && filteredActionItems.length === 0 && (
-              <div className="rounded-lg border border-dashed border-border p-6 text-sm text-muted-foreground">
-                No extracted action items yet. Connect Gmail to build your priority queue.
-              </div>
-            )}
-
-            <div className="space-y-3">
-              {sortedFilteredActionItems.map((item, index) => (
-                <div key={`${item.sourceEmailId || 'item'}-${index}`} className="rounded-lg border border-border p-4 hover:border-primary/30 transition-colors">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-semibold">{item.title}</div>
-                      <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{item.summary}</p>
-                    </div>
-                    <div className="flex flex-col items-end gap-2">
-                      <span className={`text-[0.65rem] uppercase tracking-widest border rounded-full px-2.5 py-1 ${categoryClassMap[item.category]}`}>
-                        {item.category}
-                      </span>
-                      <span className={`text-[0.65rem] uppercase tracking-widest border rounded-full px-2.5 py-1 ${priorityClassMap[item.priority]}`}>
-                        {item.priority}
-                      </span>
-                    </div>
+            <div className="rounded-lg border border-border/70 bg-background/40 p-2">
+              <div className="max-h-[560px] overflow-y-auto pr-2">
+                {!loading && filteredActionItems.length === 0 && (
+                  <div className="rounded-lg border border-dashed border-border p-6 text-sm text-muted-foreground">
+                    No extracted action items yet. Connect Gmail to build your priority queue.
                   </div>
+                )}
 
-                  <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-                    <div className="px-2.5 py-2 rounded-md bg-muted border border-border text-muted-foreground">
-                      Next: <span className="text-foreground font-medium">{item.nextAction}</span>
+                <div className="space-y-3">
+                  {sortedFilteredActionItems.map((item, index) => (
+                    <div key={`${item.sourceEmailId || 'item'}-${index}`} className="rounded-lg border border-border p-4 hover:border-primary/30 transition-colors">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold">{item.title}</div>
+                          <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{item.summary}</p>
+                        </div>
+                        <div className="flex flex-col items-end gap-2">
+                          <span className={`text-[0.65rem] uppercase tracking-widest border rounded-full px-2.5 py-1 ${categoryClassMap[item.category]}`}>
+                            {item.category}
+                          </span>
+                          <span className={`text-[0.65rem] uppercase tracking-widest border rounded-full px-2.5 py-1 ${priorityClassMap[item.priority]}`}>
+                            {item.priority}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                        <div className="px-2.5 py-2 rounded-md bg-muted border border-border text-muted-foreground">
+                          Next: <span className="text-foreground font-medium">{item.nextAction}</span>
+                        </div>
+                        <div className="px-2.5 py-2 rounded-md bg-muted border border-border text-muted-foreground">
+                          Due: <span className="text-foreground font-medium">{item.dueDate || 'No explicit deadline'}</span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="px-2.5 py-2 rounded-md bg-muted border border-border text-muted-foreground">
-                      Due: <span className="text-foreground font-medium">{item.dueDate || 'No explicit deadline'}</span>
-                    </div>
-                  </div>
+                  ))}
                 </div>
-              ))}
+              </div>
             </div>
           </motion.div>
 
@@ -978,11 +985,31 @@ function EventPriorityDashboard() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="col-span-12 lg:col-span-4 bg-card rounded-xl border border-border p-5"
+            className="col-span-12 lg:col-span-5 bg-card rounded-xl border border-border p-5 h-full"
           >
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-serif italic text-lg">Recent Emails</h3>
+              <h3 className="font-serif italic text-lg">Mail Classification</h3>
               <Mail className="w-4 h-4 text-muted-foreground" />
+            </div>
+
+            <div className="mb-3 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+              <span className="px-2 py-1 rounded-full border border-border bg-muted">
+                Important: {importantEmails.length}
+              </span>
+              <span className="px-2 py-1 rounded-full border border-border bg-muted">
+                Unimportant: {unimportantEmails.length}
+              </span>
+              <span className="px-2 py-1 rounded-full border border-border bg-amber-50 text-amber-700 border-amber-100">
+                Fishy: {fishyEmails.length}
+              </span>
+              <span className="px-2 py-1 rounded-full border border-border bg-rose-50 text-rose-700 border-rose-100">
+                Spam: {spamEmails.length}
+              </span>
+              {mailClassificationMode && (
+                <span className="px-2 py-1 rounded-full border border-border bg-muted">
+                  Mode: {mailClassificationMode === 'ollama' ? 'ollama-phi3' : 'rules'}
+                </span>
+              )}
             </div>
 
             <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
@@ -992,13 +1019,92 @@ function EventPriorityDashboard() {
                 </div>
               )}
 
-              {emails.map((email) => (
-                <div key={email.id} className="p-3 rounded-lg border border-border bg-background/60">
-                  <div className="text-xs font-semibold truncate">{email.subject}</div>
-                  <div className="text-[11px] text-muted-foreground truncate mt-0.5">{email.from}</div>
-                  <div className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{email.snippet}</div>
+              {importantEmails.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-widest text-emerald-700">Important (Top Priority)</div>
+                  {importantEmails.map((row) => (
+                    <div key={row.email.id} className="p-3 rounded-lg border border-emerald-200 bg-emerald-50/60">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="text-xs font-semibold truncate">{row.email.subject}</div>
+                        <span className="text-[10px] uppercase tracking-widest text-emerald-700">{row.classification.priority}</span>
+                      </div>
+                      <div className="text-[11px] text-muted-foreground truncate mt-0.5">{row.email.from}</div>
+                      <div className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{row.email.snippet}</div>
+                      <div className="mt-3 flex flex-wrap gap-2 text-[10px]">
+                        <button onClick={() => updateMailClassification(row.email.id, 'unimportant', 'Manually moved to unimportant.')}
+                          className="px-2 py-1 rounded-full border border-border bg-background hover:bg-muted transition-colors">Unimportant</button>
+                        <button onClick={() => updateMailClassification(row.email.id, 'fishy', 'Manually marked as fishy.')}
+                          className="px-2 py-1 rounded-full border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors">Fishy</button>
+                        <button onClick={() => updateMailClassification(row.email.id, 'spam', 'Manually marked as spam.')}
+                          className="px-2 py-1 rounded-full border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 transition-colors">Spam</button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
+
+              {unimportantEmails.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-widest text-slate-600">Unimportant (Bottom Queue)</div>
+                  {unimportantEmails.map((row) => (
+                    <div key={row.email.id} className="p-3 rounded-lg border border-border bg-background/60">
+                      <div className="text-xs font-semibold truncate">{row.email.subject}</div>
+                      <div className="text-[11px] text-muted-foreground truncate mt-0.5">{row.email.from}</div>
+                      <div className="text-[11px] text-muted-foreground mt-1 line-clamp-2">{row.email.snippet}</div>
+                      <div className="mt-3 flex flex-wrap gap-2 text-[10px]">
+                        <button onClick={() => updateMailClassification(row.email.id, 'important', 'Manually promoted to important.')}
+                          className="px-2 py-1 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors">Important</button>
+                        <button onClick={() => updateMailClassification(row.email.id, 'fishy', 'Manually marked as fishy.')}
+                          className="px-2 py-1 rounded-full border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors">Fishy</button>
+                        <button onClick={() => updateMailClassification(row.email.id, 'spam', 'Manually marked as spam.')}
+                          className="px-2 py-1 rounded-full border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 transition-colors">Spam</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {fishyEmails.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-widest text-amber-700">Fishy (Review Carefully)</div>
+                  {fishyEmails.map((row) => (
+                    <div key={row.email.id} className="p-3 rounded-lg border border-amber-200 bg-amber-50/70">
+                      <div className="text-xs font-semibold truncate">{row.email.subject}</div>
+                      <div className="text-[11px] text-muted-foreground truncate mt-0.5">{row.email.from}</div>
+                      <div className="text-[11px] text-amber-800 mt-1 line-clamp-2">{row.classification.reason}</div>
+                      <div className="mt-3 flex flex-wrap gap-2 text-[10px]">
+                        <button onClick={() => updateMailClassification(row.email.id, 'important', 'Manually promoted to important.')}
+                          className="px-2 py-1 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors">Important</button>
+                        <button onClick={() => updateMailClassification(row.email.id, 'unimportant', 'Manually moved to unimportant.')}
+                          className="px-2 py-1 rounded-full border border-border bg-background hover:bg-muted transition-colors">Unimportant</button>
+                        <button onClick={() => updateMailClassification(row.email.id, 'spam', 'Manually marked as spam.')}
+                          className="px-2 py-1 rounded-full border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 transition-colors">Spam</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {spamEmails.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-[11px] font-semibold uppercase tracking-widest text-rose-700">Spam (Isolated Section)</div>
+                  {spamEmails.map((row) => (
+                    <div key={row.email.id} className="p-3 rounded-lg border border-rose-200 bg-rose-50/70">
+                      <div className="text-xs font-semibold truncate">{row.email.subject}</div>
+                      <div className="text-[11px] text-muted-foreground truncate mt-0.5">{row.email.from}</div>
+                      <div className="text-[11px] text-rose-800 mt-1 line-clamp-2">{row.classification.reason}</div>
+                      <div className="mt-3 flex flex-wrap gap-2 text-[10px]">
+                        <button onClick={() => updateMailClassification(row.email.id, 'important', 'Manually promoted to important.')}
+                          className="px-2 py-1 rounded-full border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors">Important</button>
+                        <button onClick={() => updateMailClassification(row.email.id, 'unimportant', 'Manually moved to unimportant.')}
+                          className="px-2 py-1 rounded-full border border-border bg-background hover:bg-muted transition-colors">Unimportant</button>
+                        <button onClick={() => updateMailClassification(row.email.id, 'fishy', 'Manually marked as fishy.')}
+                          className="px-2 py-1 rounded-full border border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 transition-colors">Fishy</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </motion.div>
 
@@ -1092,6 +1198,85 @@ function EventPriorityDashboard() {
                   {filter}
                 </button>
               ))}
+            </div>
+          </motion.div>
+        </section>
+
+        <section className="grid grid-cols-12 gap-6 pb-6">
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3 }}
+            className="col-span-12 bg-card rounded-xl border border-border p-5"
+          >
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h3 className="font-serif italic text-lg">Manual Adders</h3>
+                <p className="text-xs text-muted-foreground mt-1">Keep manual entries here so the top of the page stays focused on live Gmail triage.</p>
+              </div>
+              <MessageCircle className="w-5 h-5 text-muted-foreground" />
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+              <div className="rounded-xl border border-border bg-background p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <div className="font-medium font-body text-foreground">Manual Calendar Event</div>
+                    <div className="text-xs text-muted-foreground font-body">Create an event locally.</div>
+                  </div>
+                  <Calendar className="w-5 h-5 text-muted-foreground" />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <input value={manualEventTitle} onChange={(e) => setManualEventTitle(e.target.value)} placeholder="Event title" className="px-3 py-2 rounded-lg border border-border bg-muted text-sm md:col-span-2" />
+                  <input type="date" value={manualEventDate} onChange={(e) => setManualEventDate(e.target.value)} className="px-3 py-2 rounded-lg border border-border bg-muted text-sm" />
+                  <input type="time" value={manualEventTime} onChange={(e) => setManualEventTime(e.target.value)} className="px-3 py-2 rounded-lg border border-border bg-muted text-sm" />
+                  <input value={manualEventLocation} onChange={(e) => setManualEventLocation(e.target.value)} placeholder="Location" className="px-3 py-2 rounded-lg border border-border bg-muted text-sm md:col-span-2" />
+                </div>
+                <textarea value={manualEventDescription} onChange={(e) => setManualEventDescription(e.target.value)} placeholder="Optional notes or agenda" rows={2} className="mt-3 w-full px-3 py-2 rounded-lg border border-border bg-muted text-sm resize-none" />
+                <button onClick={addManualCalendarEvent} className="mt-3 w-full px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90">Add Event</button>
+              </div>
+
+              <div className="rounded-xl border border-border bg-background p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <div className="font-medium font-body text-foreground">Priority Email Sender</div>
+                    <div className="text-xs text-muted-foreground font-body">Pin matching senders to the top.</div>
+                  </div>
+                  <Mail className="w-5 h-5 text-muted-foreground" />
+                </div>
+                <input value={prioritySender} onChange={(e) => setPrioritySender(e.target.value)} placeholder="name@company.com or keyword" className="w-full px-3 py-2 rounded-lg border border-border bg-muted text-sm" />
+                <button onClick={applyPrioritySender} className="mt-3 w-full px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90">Apply Priority Sender</button>
+              </div>
+
+              <div className="rounded-xl border border-border bg-background p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <div className="font-medium font-body text-foreground">Manual Priority Email Recogniser</div>
+                    <div className="text-xs text-muted-foreground font-body">Classify a mail by hand.</div>
+                  </div>
+                  <MessageCircle className="w-5 h-5 text-muted-foreground" />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <input value={manualEmailSender} onChange={(e) => setManualEmailSender(e.target.value)} placeholder="Sender" className="px-3 py-2 rounded-lg border border-border bg-muted text-sm" />
+                  <input value={manualEmailSubject} onChange={(e) => setManualEmailSubject(e.target.value)} placeholder="Subject" className="px-3 py-2 rounded-lg border border-border bg-muted text-sm" />
+                  <select value={manualEmailLabel} onChange={(e) => setManualEmailLabel(e.target.value as GmailMailClassification['label'])} className="px-3 py-2 rounded-lg border border-border bg-muted text-sm">
+                    <option value="important">Important</option>
+                    <option value="unimportant">Unimportant</option>
+                    <option value="fishy">Fishy</option>
+                    <option value="spam">Spam</option>
+                  </select>
+                  <select value={manualEmailPriority} onChange={(e) => setManualEmailPriority(e.target.value as EmailActionItem['priority'])} className="px-3 py-2 rounded-lg border border-border bg-muted text-sm">
+                    <option value="high">High Priority</option>
+                    <option value="medium">Medium Priority</option>
+                    <option value="low">Low Priority</option>
+                  </select>
+                </div>
+                <textarea value={manualEmailSnippet} onChange={(e) => setManualEmailSnippet(e.target.value)} placeholder="Snippet or short message preview" rows={2} className="mt-3 w-full px-3 py-2 rounded-lg border border-border bg-muted text-sm resize-none" />
+                <div className="mt-3 flex flex-col md:flex-row gap-3">
+                  <input value={manualEmailReason} onChange={(e) => setManualEmailReason(e.target.value)} placeholder="Reason" className="flex-1 px-3 py-2 rounded-lg border border-border bg-muted text-sm" />
+                  <button onClick={addManualPriorityEmail} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90">Add Mail</button>
+                </div>
+              </div>
             </div>
           </motion.div>
         </section>
@@ -1237,6 +1422,17 @@ function CommitmentsDashboard() {
 
   const { manualCommitments: injectedCommitments } = useInjectedDashboardData();
   const [manualCommitments, setManualCommitments] = useState<ManualFinancialCommitment[]>(() => loadManualFinancialCommitments());
+  const [manualWorkItems, setManualWorkItems] = useState<ManualWorkCommitment[]>(() => loadManualWorkCommitments());
+  const [manualFinanceTitle, setManualFinanceTitle] = useState('');
+  const [manualFinanceAmount, setManualFinanceAmount] = useState('');
+  const [manualFinanceDueDate, setManualFinanceDueDate] = useState('');
+  const [manualFinanceNote, setManualFinanceNote] = useState('');
+  const [manualFinancePriority, setManualFinancePriority] = useState<EmailActionItem['priority']>('high');
+  const [manualWorkTitle, setManualWorkTitle] = useState('');
+  const [manualWorkDueDate, setManualWorkDueDate] = useState('');
+  const [manualWorkNote, setManualWorkNote] = useState('');
+  const [manualWorkPriority, setManualWorkPriority] = useState<EmailActionItem['priority']>('medium');
+  const [manualCommitmentMessage, setManualCommitmentMessage] = useState('');
 
   useEffect(() => {
     if (!injectedCommitments.length) {
@@ -1255,6 +1451,58 @@ function CommitmentsDashboard() {
     });
   }, [injectedCommitments]);
 
+  const addManualFinancialCommitment = () => {
+    if (!manualFinanceTitle.trim() || !manualFinanceAmount.trim()) {
+      setManualCommitmentMessage('Enter a title and amount for the financial commitment.');
+      return;
+    }
+
+    const nextItem: ManualFinancialCommitment = {
+      id: `commitment-${Date.now()}`,
+      name: manualFinanceTitle.trim(),
+      amount: Number(manualFinanceAmount),
+      dueDate: manualFinanceDueDate || new Date().toISOString().slice(0, 10),
+      priority: manualFinancePriority,
+      note: manualFinanceNote.trim() || undefined,
+      createdAt: new Date().toISOString(),
+    };
+
+    const next = [nextItem, ...manualCommitments];
+    setManualCommitments(next);
+    saveManualFinancialCommitments(next);
+    setManualFinanceTitle('');
+    setManualFinanceAmount('');
+    setManualFinanceDueDate('');
+    setManualFinanceNote('');
+    setManualFinancePriority('high');
+    setManualCommitmentMessage('Financial commitment added.');
+  };
+
+  const addManualWorkItem = () => {
+    if (!manualWorkTitle.trim()) {
+      setManualCommitmentMessage('Enter a title for the work item.');
+      return;
+    }
+
+    const nextItem: ManualWorkCommitment = {
+      id: `work-${Date.now()}`,
+      title: manualWorkTitle.trim(),
+      dueDate: manualWorkDueDate || new Date().toISOString().slice(0, 10),
+      priority: manualWorkPriority,
+      note: manualWorkNote.trim() || undefined,
+      createdAt: new Date().toISOString(),
+    };
+
+    const next = [nextItem, ...manualWorkItems];
+    setManualWorkItems(next);
+    saveManualWorkCommitments(next);
+    setManualWorkTitle('');
+    setManualWorkDueDate('');
+    setManualWorkNote('');
+    setManualWorkPriority('medium');
+    setManualCommitmentMessage('Work item added.');
+  };
+
   return (
     <main className="flex-1 overflow-y-auto px-8 py-8">
       <div className="max-w-5xl mx-auto">
@@ -1263,6 +1511,62 @@ function CommitmentsDashboard() {
         </motion.div>
 
         <div className="grid gap-8">
+          {/* Quick Add Section */}
+          <motion.section initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
+            <h3 className="text-lg font-semibold font-display mb-4 text-foreground">Quick Add</h3>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              <div className="bg-background border border-border rounded-xl p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <div className="font-medium font-body text-foreground">Manual Financial Commitment</div>
+                    <div className="text-sm text-muted-foreground font-body">Add a custom payment or due item.</div>
+                  </div>
+                  <CreditCard className="w-5 h-5 text-muted-foreground" />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <input value={manualFinanceTitle} onChange={(e) => setManualFinanceTitle(e.target.value)} placeholder="Title" className="px-3 py-2 rounded-lg bg-muted border border-border text-sm" />
+                  <input value={manualFinanceAmount} onChange={(e) => setManualFinanceAmount(e.target.value.replace(/[^0-9.]/g, ''))} placeholder="Amount" className="px-3 py-2 rounded-lg bg-muted border border-border text-sm" />
+                  <input type="date" value={manualFinanceDueDate} onChange={(e) => setManualFinanceDueDate(e.target.value)} className="px-3 py-2 rounded-lg bg-muted border border-border text-sm" />
+                  <select value={manualFinancePriority} onChange={(e) => setManualFinancePriority(e.target.value as EmailActionItem['priority'])} className="px-3 py-2 rounded-lg bg-muted border border-border text-sm">
+                    <option value="high">High Priority</option>
+                    <option value="medium">Medium Priority</option>
+                    <option value="low">Low Priority</option>
+                  </select>
+                </div>
+                <textarea value={manualFinanceNote} onChange={(e) => setManualFinanceNote(e.target.value)} placeholder="Optional note" rows={2} className="mt-3 w-full px-3 py-2 rounded-lg bg-muted border border-border text-sm resize-none" />
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <button onClick={addManualFinancialCommitment} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90">Add Financial Commitment</button>
+                  <span className="text-xs text-muted-foreground">Saved locally for commitments and overview</span>
+                </div>
+              </div>
+
+              <div className="bg-background border border-border rounded-xl p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <div className="font-medium font-body text-foreground">Manual Work Addition</div>
+                    <div className="text-sm text-muted-foreground font-body">Add a work task or reminder.</div>
+                  </div>
+                  <CheckSquare className="w-5 h-5 text-muted-foreground" />
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <input value={manualWorkTitle} onChange={(e) => setManualWorkTitle(e.target.value)} placeholder="Work title" className="px-3 py-2 rounded-lg bg-muted border border-border text-sm md:col-span-2" />
+                  <input type="date" value={manualWorkDueDate} onChange={(e) => setManualWorkDueDate(e.target.value)} className="px-3 py-2 rounded-lg bg-muted border border-border text-sm" />
+                  <select value={manualWorkPriority} onChange={(e) => setManualWorkPriority(e.target.value as EmailActionItem['priority'])} className="px-3 py-2 rounded-lg bg-muted border border-border text-sm">
+                    <option value="high">High Priority</option>
+                    <option value="medium">Medium Priority</option>
+                    <option value="low">Low Priority</option>
+                  </select>
+                </div>
+                <textarea value={manualWorkNote} onChange={(e) => setManualWorkNote(e.target.value)} placeholder="Optional note" rows={2} className="mt-3 w-full px-3 py-2 rounded-lg bg-muted border border-border text-sm resize-none" />
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <button onClick={addManualWorkItem} className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:opacity-90">Add Work Item</button>
+                  <span className="text-xs text-muted-foreground">Stored locally for planning</span>
+                </div>
+              </div>
+            </div>
+            {manualCommitmentMessage && <div className="mt-3 text-sm text-muted-foreground">{manualCommitmentMessage}</div>}
+          </motion.section>
+
           {/* Bills Section */}
           <motion.section initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
             <h3 className="text-lg font-semibold font-display mb-4 text-foreground">Bills Due</h3>
@@ -1316,7 +1620,7 @@ function CommitmentsDashboard() {
             <div className="space-y-3">
               {manualCommitments.length === 0 && (
                 <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground font-body">
-                  No manual commitments saved yet. Add them from the Event Priority tab.
+                  No manual commitments saved yet. Add them from Quick Add above.
                 </div>
               )}
 
@@ -1335,6 +1639,36 @@ function CommitmentsDashboard() {
                   <div className="text-right">
                     <div className="font-semibold font-body text-foreground">₹{item.amount.toLocaleString('en-IN')}</div>
                     <div className="text-xs text-muted-foreground uppercase tracking-wide">{item.priority}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.section>
+
+          <motion.section initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
+            <h3 className="text-lg font-semibold font-display mb-4 text-foreground">Manual Work Items</h3>
+            <div className="space-y-3">
+              {manualWorkItems.length === 0 && (
+                <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground font-body">
+                  No manual work items saved yet. Add them from Quick Add above.
+                </div>
+              )}
+
+              {manualWorkItems.map((item) => (
+                <div key={item.id} className="flex items-center justify-between p-4 rounded-lg bg-background border border-border hover:border-accent/50 hover:shadow-md transition-all">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-3 h-3 rounded-full ${item.priority === 'high' ? 'bg-red-500' : item.priority === 'medium' ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                    <div>
+                      <div className="font-medium font-body text-foreground">{item.title}</div>
+                      <div className="text-sm text-muted-foreground font-body">
+                        Due {item.dueDate}{item.note ? ` • ${item.note}` : ''}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-right">
+                    <div className="font-semibold font-body text-foreground capitalize">{item.priority}</div>
+                    <div className="text-xs text-muted-foreground uppercase tracking-wide">work</div>
                   </div>
                 </div>
               ))}

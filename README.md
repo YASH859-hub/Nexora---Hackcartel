@@ -50,11 +50,19 @@ Nexora is an AI-assisted personal operations workspace built with React and Type
 |   |   |-- server.ts
 |   |   |-- routes/
 |   |   `-- lib/
-|-- DATABASE_SETUP.sql
-|-- SUPABASE_DASHBOARD_SCHEMA.sql
-|-- SUPABASE_SETUP.md
-|-- USER_SETUP.md
-|-- WHATSAPP_INTEGRATION_GUIDE.md
+|-- database/
+|   |-- README.md
+|   `-- sql/
+|       |-- DATABASE_SETUP.sql
+|       |-- SUPABASE_DASHBOARD_SCHEMA.sql
+|       `-- WHATSAPP_OTP_SETUP.sql
+|-- docs/
+|   |-- README.md
+|   |-- setup/
+|   |   |-- SUPABASE_SETUP.md
+|   |   `-- USER_SETUP.md
+|   `-- integrations/
+|       `-- WHATSAPP_INTEGRATION_GUIDE.md
 `-- package.json
 ```
 
@@ -70,15 +78,15 @@ VITE_GEMINI_API_KEY=your-gemini-api-key
 
 Optional backend and messaging variables are documented in:
 
-- `WHATSAPP_INTEGRATION_GUIDE.md`
-- `SUPABASE_SETUP.md`
-- `USER_SETUP.md`
+- `docs/integrations/WHATSAPP_INTEGRATION_GUIDE.md`
+- `docs/setup/SUPABASE_SETUP.md`
+- `docs/setup/USER_SETUP.md`
 
 ## Database Setup
 
 1. Open Supabase SQL Editor.
-2. Run `DATABASE_SETUP.sql`.
-3. Run `SUPABASE_DASHBOARD_SCHEMA.sql` if seeded dashboard artifacts are required.
+2. Run `database/sql/DATABASE_SETUP.sql`.
+3. Run `database/sql/SUPABASE_DASHBOARD_SCHEMA.sql` if seeded dashboard artifacts are required.
 4. Verify tables, policies, and indexes were created.
 
 ## Local Development

@@ -55,7 +55,7 @@ VITE_TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886
 ### 3.1 In Supabase
 1. Go to **SQL Editor**
 2. Create new query
-3. Copy all SQL from `WHATSAPP_OTP_SETUP.sql` in your project
+3. Copy all SQL from `database/sql/WHATSAPP_OTP_SETUP.sql` in your project
 4. Run the migration
 
 This creates:
@@ -271,7 +271,7 @@ The system accepts phone numbers in these formats:
 
 - **whatsapp.ts**: Twilio client and message sending functions
 - **useOTPVerification.ts**: React hook for OTP lifecycle
-- **WHATSAPP_OTP_SETUP.sql**: Database migration
+- **database/sql/WHATSAPP_OTP_SETUP.sql**: Database migration
 - **Auth.tsx**: Updated with phone number collection (to be updated)
 
 ---

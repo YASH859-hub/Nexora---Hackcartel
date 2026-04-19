@@ -2,6 +2,8 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from './supabase';
 import type { User } from '@supabase/supabase-js';
 
+const BACKEND_BASE = import.meta.env.VITE_BACKEND_BASE || 'http://localhost:6000';
+
 interface UserProfile {
   id: string;
   email: string;
@@ -107,6 +109,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
+
+    const { data } = await supabase.auth.getUser();
+    const signedInUser = data.user;
+
+    if (!signedInUser) {
+      return;
+    }
+
+    const { data: profile } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', signedInUser.id)
+      .single();
+
+    setUser(signedInUser);
+    if (profile) {
+      setUserProfile(profile);
+
+      const phoneNumber = profile.phone?.trim();
+      if (phoneNumber) {
+        try {
+          await fetch(`${BACKEND_BASE}/api/auth/login-notification`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              phoneNumber,
+              email: profile.email,
+              fullName: profile.full_name,
+            }),
+          });
+        } catch (notificationError) {
+          console.warn('Login WhatsApp notification failed:', notificationError);
+        }
+      }
+    }
   };
 
   const signOut = async () => {
