@@ -15,32 +15,34 @@ import {
 import { createAiRouter } from './routes/aiRoutes.js';
 import { sendWhatsAppMessage } from './lib/whatsappDelivery.js';
 import { brandWhatsAppBody } from './lib/whatsappBranding.js';
+import { buildAllowedOrigins, isOriginAllowed } from './lib/corsConfig.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Single repo-root .env for frontend (Vite) + backend
+// Single repo-root .env for local dev; Render/Vercel inject env directly
 dotenv.config({
   path: path.resolve(__dirname, '..', '..', '.env'),
   override: false,
 });
+dotenv.config({
+  path: path.resolve(__dirname, '..', '..', '.env.local'),
+  override: false,
+});
 
 const app: Express = express();
-const PORT = process.env.PORT || 5000;
+const PORT = Number(process.env.PORT) || 5000;
+const allowedOrigins = buildAllowedOrigins();
 
-// Middleware
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (
-        !origin ||
-        origin.includes('localhost') ||
-        origin.includes('127.0.0.1')
-      ) {
+      if (!origin || isOriginAllowed(origin, allowedOrigins)) {
         callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
+        return;
       }
+      console.warn(`CORS blocked origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
     },
     credentials: true,
   })
@@ -184,7 +186,7 @@ app.post('/api/auth/login-notification', async (req: Request, res: Response) => 
       `Welcome back, ${displayName}. You have successfully logged in to Nexora.`
     );
 
-    if (!result.ok) {
+    if (result.ok === false) {
       return res.status(502).json({
         success: false,
         error: result.error,
@@ -253,8 +255,8 @@ app.post('/api/gmail/sync-user', async (req: Request, res: Response) => {
   }
 });
 
-const server = app.listen(PORT, () => {
-  console.log(`\n🚀 Nexora Backend running on http://localhost:${PORT}`);
+const server = app.listen(PORT, '0.0.0.0', () => {
+  console.log(`\n🚀 Nexora Backend running on port ${PORT}`);
   console.log(`📨 POST /api/send-otp — OTP`);
   console.log(`📬 POST /api/send-notification — notification`);
   console.log(`📋 GET  /api/briefing/subscribers — list briefing users`);
@@ -269,7 +271,10 @@ const server = app.listen(PORT, () => {
     `📤 Briefings: daily 8:00 (${process.env.BRIEFING_TZ || 'server local'}) + on startup if BRIEFING_SEND_ON_STARTUP is not false\n`
   );
 
-  const sendOnStartup = process.env.BRIEFING_SEND_ON_STARTUP !== 'false';
+  const sendOnStartup =
+    process.env.BRIEFING_SEND_ON_STARTUP === 'true' ||
+    (process.env.BRIEFING_SEND_ON_STARTUP !== 'false' &&
+      process.env.NODE_ENV !== 'production');
   if (sendOnStartup) {
     const delayMs = Math.max(
       0,
