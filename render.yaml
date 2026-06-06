@@ -1,0 +1,34 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: nexora-backend
+    runtime: node
+    region: oregon
+    plan: free
+    rootDir: backend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: FRONTEND_URL
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_WHATSAPP_NUMBER
+        sync: false
+      - key: WHATSAPP_BRAND_NAME
+        value: Nexora
+      - key: BRIEFING_SEND_ON_STARTUP
+        value: "false"
+      - key: BRIEFING_TZ
+        sync: false
+      - key: BRIEFING_DATA_DIR
+        sync: false
+      - key: OLLAMA_BASE_URL
+        sync: false

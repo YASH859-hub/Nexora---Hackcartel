@@ -4,6 +4,9 @@
   "description": "Nexora Backend API for OTP and WhatsApp messaging",
   "main": "src/server.ts",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node dist/server.js",
     "dev": "tsx src/server.ts",
