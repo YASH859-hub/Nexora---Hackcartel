@@ -76,6 +76,15 @@ app.use('/api/ai', createAiRouter());
 
 const stopBriefingCron = startBriefingScheduler(twilioClient, whatsappNumber);
 
+app.get('/', (_req: Request, res: Response) => {
+  res.json({
+    service: 'Nexora API',
+    status: 'running',
+    message: 'This is the backend API. Open your Vercel frontend URL for the app UI.',
+    health: '/health',
+  });
+});
+
 // Health check endpoint
 app.get('/health', (req: Request, res: Response) => {
   res.json({ status: 'OK', message: 'Backend is running' });
