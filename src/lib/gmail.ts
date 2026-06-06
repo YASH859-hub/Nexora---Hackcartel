@@ -1,3 +1,5 @@
+import { backendApi } from './apiConfig';
+
 const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
 const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.readonly';
 const GOOGLE_IDENTITY_SCRIPT = 'https://accounts.google.com/gsi/client';
@@ -394,10 +396,8 @@ export async function classifyEmailsForInbox(messages: GmailMessageSummary[]): P
     return { items: [], mode: 'rules' };
   }
 
-  const backendBase = import.meta.env.VITE_BACKEND_AI_BASE || 'http://localhost:6000';
-
   try {
-    const response = await fetch(`${backendBase}/api/ai/intent`, {
+    const response = await fetch(backendApi('/api/ai/intent'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

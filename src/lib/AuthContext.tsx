@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from './supabase';
 import type { User } from '@supabase/supabase-js';
 
-const BACKEND_BASE = import.meta.env.VITE_BACKEND_BASE || 'http://localhost:6000';
+import { backendApi } from './apiConfig';
 
 interface UserProfile {
   id: string;
@@ -130,7 +130,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const phoneNumber = profile.phone?.trim();
       if (phoneNumber) {
         try {
-          await fetch(`${BACKEND_BASE}/api/auth/login-notification`, {
+          await fetch(backendApi('/api/auth/login-notification'), {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

@@ -4,6 +4,7 @@ import { useAuth } from '../lib/AuthContext';
 import { useOTPVerification } from '../lib/useOTPVerification';
 import { motion } from 'motion/react';
 import { Sparkles, Send, CheckCircle2, AlertCircle } from 'lucide-react';
+import { backendApi } from '../lib/apiConfig';
 
 export default function OTPTest() {
   const navigate = useNavigate();
@@ -32,7 +33,7 @@ export default function OTPTest() {
         .padStart(6, '0');
 
       // Call backend API to send OTP
-      const response = await fetch('http://localhost:5000/api/send-otp', {
+      const response = await fetch(backendApi('/api/send-otp'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phoneNumber, otp })

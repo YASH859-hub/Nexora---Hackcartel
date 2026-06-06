@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { supabase } from './supabase';
+import { backendApi } from './apiConfig';
 
 export interface OTPVerification {
   id: string;
@@ -43,7 +44,7 @@ export function useOTPVerification() {
       if (dbError) throw dbError;
 
       // Send OTP via WhatsApp (server-side)
-      const response = await fetch('/api/send-otp', {
+      const response = await fetch(backendApi('/api/send-otp'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phoneNumber, otp }),

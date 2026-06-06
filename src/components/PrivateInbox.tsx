@@ -13,6 +13,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../lib/AuthContext';
+import { backendApi } from '../lib/apiConfig';
 import { useEncryptionKey, saveEncryptedInboxItem, fetchDecryptedInboxItems, updateEncryptedInboxItemLabel, logEncryptedEvent } from '../lib/usePrivateData';
 import { supabase } from '../lib/supabase';
 
@@ -133,8 +134,7 @@ export function usePrivateInbox() {
     if (!user?.id) return;
 
     try {
-      const BACKEND_BASE = import.meta.env.VITE_BACKEND_BASE || 'http://localhost:5000';
-      const response = await fetch(`${BACKEND_BASE}/api/gmail/sync-user`, {
+      const response = await fetch(backendApi('/api/gmail/sync-user'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: user.id }),

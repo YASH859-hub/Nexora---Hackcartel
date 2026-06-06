@@ -1,13 +1,13 @@
+import { backendApi } from './apiConfig';
+
 export interface ChatMessage {
   role: 'user' | 'model' | 'system';
   content: string;
 }
 
-const BACKEND_AI_BASE = import.meta.env.VITE_BACKEND_AI_BASE || 'http://localhost:6000';
-
 export async function generateChatResponse(messages: ChatMessage[]): Promise<string> {
   try {
-    const ollamaResponse = await fetch(`${BACKEND_AI_BASE}/api/ai/chat`, {
+    const ollamaResponse = await fetch(backendApi('/api/ai/chat'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
